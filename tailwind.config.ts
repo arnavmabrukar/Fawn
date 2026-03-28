@@ -11,6 +11,10 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        "daycare-teal": "#0d9488",
+        "daycare-teal-light": "#ccfbf1",
+        "daycare-orange": "#f97316",
+        "daycare-orange-light": "#ffedd5",
       },
     },
   },
