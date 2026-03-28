@@ -3,12 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Mic, PhoneOff } from 'lucide-react';
-
-export type TranscriptEntry = {
-  id: string;
-  speaker: 'fawn' | 'caller';
-  text: string;
-};
+import { TranscriptEntry } from '@/lib/live-feed';
 
 interface LiveAgentPanelProps {
   isOnCall: boolean;

@@ -5,6 +5,7 @@ const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 
 const app = express();
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 8080;
@@ -22,12 +23,31 @@ const pusher = new Pusher({
   useTLS: true
 });
 
-function emitAction(type, title, description) {
+function emitAction(type, title, description, extra = {}) {
   try {
     pusher.trigger('fawn-live', 'action', {
-      type, title, description, timestamp: new Date().toISOString()
+      type,
+      title,
+      description,
+      timestamp: new Date().toISOString(),
+      ...extra,
     }).catch(() => {});
   } catch (err) {}
+}
+
+function emitCheckIn(childName, checkedInAt, notes) {
+  const checkInIso = checkedInAt || new Date().toISOString();
+  const summary = notes || `${childName} was checked in successfully.`;
+
+  emitAction(
+    "checkin",
+    `${childName} checked in`,
+    summary,
+    {
+      childName,
+      checkedInAt: checkInIso,
+    }
+  );
 }
 
 function emitTranscript(speaker, text) {
@@ -59,6 +79,28 @@ app.post('/api/voice/inbound', (req, res) => {
   `;
   res.type('text/xml');
   res.send(twiml);
+});
+
+app.post('/api/feed/action', (req, res) => {
+  const { type, title, description, childName, checkedInAt } = req.body || {};
+
+  if (!type || !title || !description) {
+    return res.status(400).json({ error: 'type, title, and description are required' });
+  }
+
+  emitAction(type, title, description, { childName, checkedInAt });
+  return res.json({ ok: true });
+});
+
+app.post('/api/check-in', (req, res) => {
+  const { childName, checkedInAt, notes } = req.body || {};
+
+  if (!childName) {
+    return res.status(400).json({ error: 'childName is required' });
+  }
+
+  emitCheckIn(childName, checkedInAt, notes);
+  return res.json({ ok: true });
 });
 
 // Create HTTP server to attach WebSockets

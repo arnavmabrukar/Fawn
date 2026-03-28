@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Pusher from 'pusher-js';
 import { MetricsHeader } from '@/components/dashboard/MetricsHeader';
-import { LiveAgentPanel, TranscriptEntry } from '@/components/dashboard/LiveAgentPanel';
-import { AutonomousActionsFeed, ActionEntry } from '@/components/dashboard/AutonomousActionsFeed';
-import { Trash2, Play } from 'lucide-react';
+import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
+import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
+import { Trash2, Play, ExternalLink } from 'lucide-react';
+import { ActionEntry, IncomingActionPayload, TranscriptEntry, toActionEntry } from '@/lib/live-feed';
 
 export default function Dashboard() {
   const [isOnCall, setIsOnCall] = useState(false);
@@ -31,14 +32,8 @@ export default function Dashboard() {
       setTranscript(prev => [...prev, { id: crypto.randomUUID(), speaker: data.speaker, text: data.text }]);
     });
 
-    channel.bind('action', (data: { type: any, title: string, description: string }) => {
-      setActions(prev => [...prev, { 
-        id: crypto.randomUUID(), 
-        type: data.type, 
-        title: data.title, 
-        description: data.description, 
-        timestamp: new Date() 
-      }]);
+    channel.bind('action', (data: IncomingActionPayload) => {
+      setActions(prev => [...prev, toActionEntry(data)]);
       
       // Bump lead count for notable actions
       if (data.type === 'calendar' || data.type === 'document') {
@@ -93,6 +88,7 @@ export default function Dashboard() {
       { t: 15000, type: 'transcript', data: { speaker: 'fawn', text: 'Thanks, Sarah! I’ve made a note about Leo’s peanut allergy. We are a peanut-free facility, so he will be perfectly safe here. Would you like to come in for a tour this Thursday at 10 AM?' } },
       { t: 19000, type: 'transcript', data: { speaker: 'caller', text: 'Thursday at 10 AM works great for me.' } },
       { t: 21000, type: 'action', data: { type: 'calendar', title: 'Tour Booked for Sarah & Leo', description: 'Thursday, March 20th @ 10:00 AM' } },
+      { t: 24000, type: 'action', data: { type: 'checkin', title: 'Leo checked in', description: 'Front desk completed the arrival handoff.', childName: 'Leo', checkedInAt: new Date(Date.now() + 24000).toISOString() } },
       { t: 22000, type: 'metric', data: { type: 'lead' } },
       { t: 23000, type: 'transcript', data: { speaker: 'fawn', text: 'Wonderful! I have booked your tour for Thursday at 10 AM. I’ll send a confirmation text shortly. Do you have any other questions?' } },
       { t: 26000, type: 'transcript', data: { speaker: 'caller', text: 'No, that’s everything. Thank you!' } },
@@ -103,9 +99,11 @@ export default function Dashboard() {
     sequence.forEach(step => {
       const timeout = setTimeout(() => {
         if (step.type === 'transcript') {
+          if (!step.data) return;
           setTranscript(prev => [...prev, { id: crypto.randomUUID(), speaker: step.data.speaker as 'fawn'|'caller', text: step.data.text as string }]);
         } else if (step.type === 'action') {
-          setActions(prev => [...prev, { id: crypto.randomUUID(), timestamp: new Date(), ...step.data as any }]);
+          if (!step.data) return;
+          setActions(prev => [...prev, toActionEntry(step.data as IncomingActionPayload)]);
         } else if (step.type === 'metric') {
           setLeads(prev => prev + 1);
         } else if (step.type === 'end') {
@@ -126,6 +124,13 @@ export default function Dashboard() {
         </div>
         
         <div className="flex gap-3">
+          <a
+            href="/client"
+            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-sm"
+          >
+            <ExternalLink size={16} />
+            Client Portal
+          </a>
           <button 
             onClick={clearDashboard}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"

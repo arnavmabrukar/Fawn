@@ -2,17 +2,8 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar, FileText, CheckCircle2 } from 'lucide-react';
-
-export type ActionType = 'calendar' | 'document' | 'info';
-
-export type ActionEntry = {
-  id: string;
-  type: ActionType;
-  title: string;
-  description: string;
-  timestamp: Date;
-};
+import { Calendar, FileText, CheckCircle2, BadgeCheck } from 'lucide-react';
+import { ActionEntry, ActionType, formatClockTime } from '@/lib/live-feed';
 
 interface AutonomousActionsFeedProps {
   actions: ActionEntry[];
@@ -20,6 +11,8 @@ interface AutonomousActionsFeedProps {
 
 const getIconForType = (type: ActionType) => {
   switch (type) {
+    case 'checkin':
+      return <BadgeCheck size={20} className="text-emerald-600" />;
     case 'calendar':
       return <Calendar size={20} className="text-daycare-orange" />;
     case 'document':
@@ -32,6 +25,8 @@ const getIconForType = (type: ActionType) => {
 
 const getBgForType = (type: ActionType) => {
   switch (type) {
+    case 'checkin':
+      return 'bg-emerald-50 border-emerald-100';
     case 'calendar':
       return 'bg-orange-50 border-orange-100';
     case 'document':
@@ -78,7 +73,7 @@ export function AutonomousActionsFeed({ actions }: AutonomousActionsFeedProps) {
                     <h3 className="text-sm font-bold text-gray-800">{action.title}</h3>
                     <p className="text-sm text-gray-600 mt-1">{action.description}</p>
                     <span className="text-xs text-gray-400 mt-2 block font-medium">
-                      {action.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      {formatClockTime(action.timestamp)}
                     </span>
                   </div>
                 </motion.div>
