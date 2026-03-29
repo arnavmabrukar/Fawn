@@ -2,13 +2,27 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Phone, Calendar, Clock, ChevronRight } from 'lucide-react';
+import { X, User, Phone, Clock, ChevronRight } from 'lucide-react';
+
+type LeadRecord = {
+  id: string;
+  childName: string;
+  parentName: string;
+  age: string | number;
+  timestamp: string;
+};
+
+type CallRecord = {
+  id: string;
+  duration: string | number;
+  timestamp: string;
+};
 
 interface HistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  leads: any[];
-  calls: any[];
+  leads: LeadRecord[];
+  calls: CallRecord[];
 }
 
 export function HistoryModal({ isOpen, onClose, leads, calls }: HistoryModalProps) {

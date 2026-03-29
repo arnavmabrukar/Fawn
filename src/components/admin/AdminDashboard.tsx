@@ -249,6 +249,22 @@ export function AdminDashboard() {
         <LiveAgentPanel isOnCall={isOnCall} transcript={transcript} message={fawnMessage} />
         <AutonomousActionsFeed actions={actions} />
       </div>
+
+      <div className="mt-6 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="mb-5">
+          <h2 className="text-xl font-bold text-gray-800">Tour Calendar</h2>
+          <p className="text-sm text-gray-500">Shared Google Calendar for scheduled tours and availability.</p>
+        </div>
+
+        <div className="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50">
+          <iframe
+            src="https://calendar.google.com/calendar/embed?src=96c2d905f9f8680926a24f1fc5d32d65acc1a67e9da6729c8e1d6ba8bcc689f5%40group.calendar.google.com&ctz=America%2FNew_York"
+            title="Fawn Google Calendar"
+            className="h-[720px] w-full border-0"
+            scrolling="no"
+          />
+        </div>
+      </div>
     </div>
   );
 }
