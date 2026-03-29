@@ -6,7 +6,7 @@ import { MetricsHeader } from '@/components/dashboard/MetricsHeader';
 import { AdminNoteComposer } from '@/components/dashboard/AdminNoteComposer';
 import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
 import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
-import { Trash2, Play, ExternalLink } from 'lucide-react';
+import { Trash2, Play, ExternalLink, Sparkles } from 'lucide-react';
 import {
   ActionEntry,
   AUDIT_LOG_STORAGE_KEY,
@@ -195,18 +195,18 @@ export function AdminDashboard() {
 
         <div className="flex gap-3">
           <a
+            href="/ai-agent"
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all font-medium text-sm shadow-sm hover:shadow-md"
+          >
+            <Sparkles size={16} />
+            AI Agent
+          </a>
+          <a
             href="/client"
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-sm"
           >
             <ExternalLink size={16} />
             Client Portal
-          </a>
-          <a
-            href="/ai-agent"
-            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-sm"
-          >
-            <ExternalLink size={16} />
-            AI Agent
           </a>
           <button
             onClick={clearDashboard}
