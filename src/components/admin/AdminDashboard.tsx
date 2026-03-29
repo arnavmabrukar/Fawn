@@ -19,6 +19,20 @@ import {
   toActionEntry,
 } from '@/lib/live-feed';
 
+type HistoryLead = {
+  id: string;
+  childName: string;
+  parentName: string;
+  age: string | number;
+  timestamp: string;
+};
+
+type HistoryCall = {
+  id: string;
+  duration: string | number;
+  timestamp: string;
+};
+
 export function AdminDashboard() {
   const sourceIdRef = useRef(`admin-${crypto.randomUUID()}`);
   const [isOnCall, setIsOnCall] = useState(false);
@@ -28,8 +42,8 @@ export function AdminDashboard() {
   const [leads, setLeads] = useState(12);
   const [calls, setCalls] = useState(45);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [dbLeads, setDbLeads] = useState<any[]>([]);
-  const [dbCalls, setDbCalls] = useState<any[]>([]);
+  const [dbLeads, setDbLeads] = useState<HistoryLead[]>([]);
+  const [dbCalls, setDbCalls] = useState<HistoryCall[]>([]);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   const openHistoryModal = async () => {
