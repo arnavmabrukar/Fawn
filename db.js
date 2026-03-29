@@ -21,6 +21,19 @@ const callSchema = new mongoose.Schema({
 const Lead = mongoose.model('Lead', leadSchema);
 const Call = mongoose.model('Call', callSchema);
 
+const toyFeedbackSchema = new mongoose.Schema({
+  toy: { type: String, required: true },
+  emoji: { type: String },
+  teacher: { type: String, required: true },
+  rating: { type: Number, min: 1, max: 5 },
+  quote: { type: String },
+  tags: [{ type: String }],
+  weekOf: { type: Date, default: Date.now },
+});
+
+const ToyFeedback = mongoose.model('ToyFeedback', toyFeedbackSchema);
+
+
 const connectDB = async () => {
   try {
     if (!process.env.MONGODB_URI) {
@@ -35,4 +48,4 @@ const connectDB = async () => {
   }
 };
 
-module.exports = { connectDB, Lead, Call };
+module.exports = { connectDB, Lead, Call, ToyFeedback };

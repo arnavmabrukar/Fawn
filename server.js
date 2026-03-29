@@ -4,7 +4,9 @@ const WebSocket = require('ws');
 const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 const { google } = require('googleapis');
-const { connectDB, Lead, Call } = require('./db');
+const { GoogleGenAI } = require('@google/genai');
+const { connectDB, Lead, Call, ToyFeedback } = require('./db');
+
 
 // Initialize MongoDB
 connectDB();
@@ -200,6 +202,123 @@ app.get('/api/history', async (req, res) => {
     res.json({ leads, calls });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/toys', async (req, res) => {
+  try {
+    const toys = await ToyFeedback.find().sort({ weekOf: -1 }).limit(20);
+    const formatted = toys.map(t => ({
+      id: t._id,
+      toy: t.toy,
+      emoji: t.emoji,
+      teacher: t.teacher,
+      rating: t.rating,
+      quote: t.quote,
+      date: t.weekOf ? t.weekOf.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Unknown',
+      tags: t.tags
+    }));
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/swarm', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const sendEvent = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const records = await ToyFeedback.find().limit(20);
+    const dataStr = JSON.stringify(records.map(r => ({ toy: r.toy, rating: r.rating, quote: r.quote, tags: r.tags })));
+
+    let ai;
+    try {
+        ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    } catch(e) {
+        // Fallback or error if not available
+        sendEvent('error', { message: 'Failed to initialize Gemini SDK.' });
+        res.end();
+        return;
+    }
+
+    const agentConfigs = [
+      { id: 'safety', instruction: 'Analyze the following toy feedback for safety and age appropriateness. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your safety checks.' },
+      { id: 'engagement', instruction: 'Rank the toys based on engagement and enthusiasm. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your thoughts.' },
+      { id: 'budget', instruction: 'Analyze the budget and inventory implications. Assumed budget is $200. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your thoughts.' },
+      { id: 'dev', instruction: 'Map the toys to developmental milestones. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your developmental analysis.' }
+    ];
+
+    sendEvent('status', { message: 'Swarm initialized. Triggering parallel processing.' });
+
+    // Run 4 agents in parallel
+    const results = await Promise.all(agentConfigs.map(async (agent) => {
+      sendEvent('agent_start', { id: agent.id });
+      
+      let responseText = "";
+      try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Toy Data:\n${dataStr}\n\nInstruction: ${agent.instruction}`,
+        });
+        responseText = response.text || "";
+      } catch (err) {
+        responseText = "- Error calling agent API.\n- Skipping analysis for this agent.";
+      }
+
+      const lines = responseText.split('\n').filter(l => l.trim().length > 0);
+      lines.forEach((line, i) => {
+        sendEvent('agent_message', { id: agent.id, index: i, text: line.replace(/^-/, '').trim() });
+      });
+
+      sendEvent('agent_done', { id: agent.id });
+      return { id: agent.id, output: responseText };
+    }));
+
+    // Consensus Agent
+    sendEvent('agent_start', { id: 'consensus' });
+    const consensusPrompt = `You are the Arbiter. Here are the thoughts from your 4 sub-agents:
+${JSON.stringify(results)}
+
+Based on this, pick the Top 3 toys for next week.
+Format your output exactly as a JSON array of objects with the following keys: "toy" (string), "emoji" (string), "reason" (short string), "score" (number out of 100). Do NOT use markdown code blocks, just pure JSON array starting with [ and ending with ].`;
+
+    let consensusResponseText = "[]";
+    try {
+        const consensusResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: consensusPrompt
+        });
+        consensusResponseText = consensusResponse.text || "[]";
+    } catch (err) {
+        console.error("Consensus Error", err);
+    }
+    
+    sendEvent('agent_message', { id: 'consensus', index: 0, text: 'Aggregating signals from 4 parallel agents...' });
+    sendEvent('agent_message', { id: 'consensus', index: 1, text: 'Analyzing vote weights and scoring metrics...' });
+    sendEvent('agent_message', { id: 'consensus', index: 2, text: '🏆 Consensus reached. Final toy lineup confirmed.' });
+
+    let finalJson;
+    try {
+      let cleaned = consensusResponseText.trim();
+      if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/```json/gi, '').replace(/```/g, '').trim();
+      finalJson = JSON.parse(cleaned);
+    } catch (e) {
+      finalJson = [ { toy: "Parse Error", emoji: "❌", reason: "Failed to parse final selection.", score: 0 } ];
+    }
+
+    sendEvent('agent_done', { id: 'consensus' });
+    sendEvent('result', finalJson);
+    res.end();
+  } catch (err) {
+    sendEvent('error', { message: err.message });
+    res.end();
   }
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Sparkles, Star, User, Brain, ShieldCheck, TrendingUp, DollarSign, CheckCircle2, Clock } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,80 +36,7 @@ interface SwarmResult {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const TOY_RECORDS: ToyRecord[] = [
-  {
-    id: "1",
-    toy: "Dinosaur Dig Kit",
-    emoji: "🦕",
-    teacher: "Ms. Rivera",
-    rating: 5,
-    quote: "Kids couldn't put them down! Every child was engaged for over 40 minutes.",
-    date: "Mar 22",
-    tags: ["STEM", "Sensory", "Independent Play"],
-  },
-  {
-    id: "2",
-    toy: "Kinetic Sand Table",
-    emoji: "🏖️",
-    teacher: "Mr. Chen",
-    rating: 4,
-    quote: "Great sensory exploration. A few needed redirection but overall very calming.",
-    date: "Mar 23",
-    tags: ["Sensory", "Fine Motor"],
-  },
-  {
-    id: "3",
-    toy: "Mega Block Puzzle",
-    emoji: "🟦",
-    teacher: "Ms. Okafor",
-    rating: 5,
-    quote: "Incredible focus and teamwork. Kids were helping each other without prompting!",
-    date: "Mar 24",
-    tags: ["Teamwork", "Cognitive", "Fine Motor"],
-  },
-  {
-    id: "4",
-    toy: "Toy Kitchen Set",
-    emoji: "🍳",
-    teacher: "Ms. Rivera",
-    rating: 3,
-    quote: "Popular but gets chaotic fast. Works better in small groups of 2-3.",
-    date: "Mar 24",
-    tags: ["Role Play", "Social"],
-  },
-  {
-    id: "5",
-    toy: "Magnetic Tiles",
-    emoji: "🔷",
-    teacher: "Mr. Chen",
-    rating: 4,
-    quote: "Loved by the older kids (4-5yr). Younger ones struggled a bit but stayed curious.",
-    date: "Mar 25",
-    tags: ["STEM", "Creativity", "3D Thinking"],
-  },
-  {
-    id: "6",
-    toy: "Finger Paints",
-    emoji: "🎨",
-    teacher: "Ms. Okafor",
-    rating: 3,
-    quote: "Messy but joyful. Several kids painted for the first time and were beaming.",
-    date: "Mar 26",
-    tags: ["Art", "Sensory", "Expression"],
-  },
-  {
-    id: "7",
-    toy: "Animal Puppets",
-    emoji: "🐸",
-    teacher: "Ms. Rivera",
-    rating: 4,
-    quote: "Big hit during circle time. Kids started making up their own stories!",
-    date: "Mar 27",
-    tags: ["Language", "Creativity", "Social"],
-  },
-];
-
-const AGENTS: Agent[] = [
+const INITIAL_AGENTS: Agent[] = [
   {
     id: "safety",
     name: "Agent SHIELD",
@@ -118,14 +45,7 @@ const AGENTS: Agent[] = [
     color: "text-blue-600",
     bgColor: "bg-blue-50",
     borderColor: "border-blue-200",
-    messages: [
-      "Scanning 7 toy records for age-appropriate safety flags...",
-      "Dinosaur Dig Kit ✓ — no sharp parts, 3+ age bracket confirmed.",
-      "Kinetic Sand ✓ — non-toxic, allergen status clear in inventory.",
-      "Mega Block Puzzle ✓ — all pieces >3cm, no choking risk.",
-      "Flagging Toy Kitchen Set ⚠ — high congestion risk in groups >3.",
-      "Safety analysis complete. 6/7 toys cleared for deployment.",
-    ],
+    messages: [],
   },
   {
     id: "engagement",
@@ -135,14 +55,7 @@ const AGENTS: Agent[] = [
     color: "text-pink-600",
     bgColor: "bg-pink-50",
     borderColor: "border-pink-200",
-    messages: [
-      "Computing weighted engagement scores from teacher ratings...",
-      "Dinosaur Dig Kit: 5.0/5 avg, sustained engagement >40min 🔥",
-      "Mega Block Puzzle: 5.0/5 avg, unprompted peer cooperation noted.",
-      "Animal Puppets: 4.0/5, spontaneous narrative play detected.",
-      "Kinetic Sand: 4.0/5, strong but 18% redirection rate logged.",
-      "Top engagement tier locked: Dinosaur Kit, Blocks, Puppets.",
-    ],
+    messages: [],
   },
   {
     id: "budget",
@@ -152,14 +65,7 @@ const AGENTS: Agent[] = [
     color: "text-green-600",
     bgColor: "bg-green-50",
     borderColor: "border-green-200",
-    messages: [
-      "Cross-referencing toy records with facility inventory...",
-      "Dinosaur Dig Kit: $0 — already in storage room B. ✓",
-      "Mega Block Puzzle: $0 — current stock sufficient. ✓",
-      "Kinetic Sand Table: $0 — permanently installed. ✓",
-      "Animal Puppets: $0 — 12 units in cabinet 3. ✓",
-      "Zero additional spend required for top 4 candidates. Flagging for consensus.",
-    ],
+    messages: [],
   },
   {
     id: "dev",
@@ -169,14 +75,7 @@ const AGENTS: Agent[] = [
     color: "text-amber-600",
     bgColor: "bg-amber-50",
     borderColor: "border-amber-200",
-    messages: [
-      "Mapping toys to this cohort's developmental targets (age 3-5)...",
-      "Target milestones: fine motor, cooperative play, language, STEM curiosity.",
-      "Mega Block Puzzle ✓✓ — fine motor + cooperative play, dual milestone hit.",
-      "Animal Puppets ✓✓ — language development + narrative thinking confirmed.",
-      "Dinosaur Dig Kit ✓ — STEM curiosity, spatial reasoning engagement.",
-      "Developmental alignment scored. Recommending Blocks, Puppets, Dinosaur Kit.",
-    ],
+    messages: [],
   },
   {
     id: "consensus",
@@ -186,35 +85,7 @@ const AGENTS: Agent[] = [
     color: "text-purple-600",
     bgColor: "bg-purple-50",
     borderColor: "border-purple-200",
-    messages: [
-      "Receiving signals from 4 agents... aggregating vote weights.",
-      "Safety votes: Dinosaur Kit(1), Blocks(1), Puppets(1).",
-      "Engagement votes: Dinosaur Kit(1), Blocks(1), Puppets(1).",
-      "Budget votes: Dinosaur Kit(1), Blocks(1), Sand(1), Puppets(1).",
-      "Development votes: Blocks(2), Puppets(2), Dinosaur Kit(1).",
-      "🏆 Consensus reached. Final toy lineup for next week confirmed.",
-    ],
-  },
-];
-
-const SWARM_RESULTS: SwarmResult[] = [
-  {
-    toy: "Mega Block Puzzle",
-    emoji: "🟦",
-    reason: "Highest composite score: 5/5 engagement, dual developmental milestones, zero cost.",
-    score: 98,
-  },
-  {
-    toy: "Dinosaur Dig Kit",
-    emoji: "🦕",
-    reason: "Maximum sustained engagement (40+ min), STEM alignment, unanimous safety clearance.",
-    score: 95,
-  },
-  {
-    toy: "Animal Puppets",
-    emoji: "🐸",
-    reason: "Strong language + social development signal, spontaneous storytelling observed.",
-    score: 89,
+    messages: [],
   },
 ];
 
@@ -236,32 +107,29 @@ function StarRating({ rating }: { rating: number }) {
 
 function AgentCard({
   agent,
-  activeIndex,
-  agentIndex,
-  messageIndex,
+  isActive,
+  isDone,
 }: {
   agent: Agent;
-  activeIndex: number;
-  agentIndex: number;
-  messageIndex: number;
+  isActive: boolean;
+  isDone: boolean;
 }) {
-  const isActive = agentIndex <= activeIndex;
-  const messages = isActive ? agent.messages.slice(0, messageIndex + 1) : [];
+  const messages = agent.messages || [];
 
   return (
     <div
       className={`rounded-2xl border p-4 transition-all duration-500 ${
-        isActive
+        isActive || isDone
           ? `${agent.bgColor} ${agent.borderColor} opacity-100`
           : "bg-gray-50 border-gray-100 opacity-40"
       }`}
     >
       <div className="flex items-center gap-2 mb-3">
-        <div className={`${agent.color} ${isActive ? "opacity-100" : "opacity-40"}`}>
+        <div className={`${agent.color} ${isActive || isDone ? "opacity-100" : "opacity-40"}`}>
           {agent.icon}
         </div>
         <div>
-          <p className={`font-bold text-sm ${isActive ? agent.color : "text-gray-400"}`}>
+          <p className={`font-bold text-sm ${isActive || isDone ? agent.color : "text-gray-400"}`}>
             {agent.name}
           </p>
           <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
@@ -279,14 +147,14 @@ function AgentCard({
           <p
             key={i}
             className={`text-xs leading-relaxed ${
-              i === messages.length - 1 ? "text-gray-700 font-medium" : "text-gray-400"
+              i === messages.length - 1 && isActive ? "text-gray-700 font-medium" : "text-gray-400"
             }`}
           >
             {i === messages.length - 1 && isActive && "› "}
             {msg}
           </p>
         ))}
-        {!isActive && (
+        {!isActive && !isDone && (
           <p className="text-xs text-gray-300 italic">Waiting for activation...</p>
         )}
       </div>
@@ -300,49 +168,85 @@ type SwarmState = "idle" | "running" | "done";
 
 export default function AIAgentPage() {
   const [swarmState, setSwarmState] = useState<SwarmState>("idle");
-  const [activeAgentIndex, setActiveAgentIndex] = useState(-1);
-  const [messageIndex, setMessageIndex] = useState(0);
-  const [showResults, setShowResults] = useState(false);
+  const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
+  const [toyRecords, setToyRecords] = useState<ToyRecord[]>([]);
+  const [swarmResults, setSwarmResults] = useState<SwarmResult[]>([]);
+  const [activeIds, setActiveIds] = useState<Set<string>>(new Set());
+  const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch('/api/toys')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setToyRecords(data);
+      })
+      .catch(err => console.error("Failed to fetch toys:", err));
+  }, []);
 
   const runSwarm = () => {
     if (swarmState === "running") return;
 
     setSwarmState("running");
-    setActiveAgentIndex(-1);
-    setMessageIndex(0);
-    setShowResults(false);
+    setSwarmResults([]);
+    setAgents(INITIAL_AGENTS.map(a => ({ ...a, messages: [] })));
+    setActiveIds(new Set());
+    setDoneIds(new Set());
 
-    const AGENT_DELAY = 900; // ms between each agent activating
-    const MSG_DELAY = 600;   // ms between each message within an agent
+    const evtSource = new EventSource('http://localhost:8080/api/swarm');
 
-    AGENTS.forEach((_, agentIdx) => {
-      setTimeout(() => {
-        setActiveAgentIndex(agentIdx);
-        setMessageIndex(0);
+    evtSource.addEventListener('status', (e) => {
+      console.log('Swarm Status:', JSON.parse(e.data).message);
+    });
 
-        AGENTS[agentIdx].messages.forEach((_, msgIdx) => {
-          if (msgIdx === 0) return;
-          setTimeout(() => {
-            setMessageIndex(msgIdx);
-          }, msgIdx * MSG_DELAY);
-        });
+    evtSource.addEventListener('agent_start', (e) => {
+      const { id } = JSON.parse(e.data);
+      setActiveIds(prev => new Set([...prev, id]));
+    });
 
-        const isLast = agentIdx === AGENTS.length - 1;
-        if (isLast) {
-          setTimeout(() => {
-            setSwarmState("done");
-            setShowResults(true);
-          }, AGENTS[agentIdx].messages.length * MSG_DELAY + 400);
+    evtSource.addEventListener('agent_message', (e) => {
+      const data = JSON.parse(e.data);
+      setAgents(prev => {
+        const next = [...prev];
+        const idx = next.findIndex(a => a.id === data.id);
+        if (idx > -1) {
+          const msgs = [...next[idx].messages];
+          msgs[data.index] = data.text;
+          next[idx] = { ...next[idx], messages: msgs };
         }
-      }, agentIdx * (AGENT_DELAY + AGENTS[agentIdx].messages.length * MSG_DELAY));
+        return next;
+      });
+    });
+
+    evtSource.addEventListener('agent_done', (e) => {
+      const { id } = JSON.parse(e.data);
+      setActiveIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setDoneIds(prev => new Set([...prev, id]));
+    });
+
+    evtSource.addEventListener('result', (e) => {
+      const finalJson = JSON.parse(e.data);
+      setSwarmResults(finalJson);
+      setSwarmState("done");
+      evtSource.close();
+    });
+
+    evtSource.addEventListener('error', (e) => {
+      console.error('SSE Error:', e);
+      setSwarmState("done");
+      evtSource.close();
     });
   };
 
   const resetSwarm = () => {
     setSwarmState("idle");
-    setActiveAgentIndex(-1);
-    setMessageIndex(0);
-    setShowResults(false);
+    setAgents(INITIAL_AGENTS.map(a => ({ ...a, messages: [] })));
+    setActiveIds(new Set());
+    setDoneIds(new Set());
+    setSwarmResults([]);
   };
 
   return (
@@ -357,7 +261,7 @@ export default function AIAgentPage() {
               <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Agentic Toy Picker</h1>
             </div>
             <p className="text-gray-500">
-              A 5-agent swarm analyzes weekly teacher feedback and selects next week&apos;s toy lineup.
+              A 5-agent swarm analyzes real-time teacher feedback from MongoDB and recommends next week&apos;s toy lineup.
             </p>
           </div>
 
@@ -372,15 +276,15 @@ export default function AIAgentPage() {
             )}
             <button
               onClick={runSwarm}
-              disabled={swarmState === "running"}
+              disabled={swarmState === "running" || toyRecords.length === 0}
               className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
-                swarmState === "running"
+                swarmState === "running" || toyRecords.length === 0
                   ? "bg-purple-300 text-white cursor-not-allowed"
                   : "bg-purple-600 text-white hover:bg-purple-700 hover:shadow-purple-200 hover:shadow-lg"
               }`}
             >
               <Sparkles size={16} />
-              {swarmState === "running" ? "Swarm Running..." : swarmState === "done" ? "Run Again" : "Run Agentic Swarm"}
+               {toyRecords.length === 0 ? "Loading DB..." : swarmState === "running" ? "Agents Analyzing..." : "Run Gemini Swarm"}
             </button>
           </div>
         </div>
@@ -393,51 +297,62 @@ export default function AIAgentPage() {
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-gray-400" />
               <h2 className="text-sm font-bold uppercase tracking-widest text-gray-400">
-                Weekly Teacher Feedback — Mar 22–28
+                Weekly Teacher Feedback — Live from DB
               </h2>
             </div>
 
             <div className="space-y-3">
-              {TOY_RECORDS.map((record) => (
-                <div
-                  key={record.id}
-                  className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md hover:border-purple-100 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl w-10 h-10 flex items-center justify-center bg-gray-50 rounded-xl">
-                        {record.emoji}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-gray-900 text-sm">{record.toy}</h3>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <StarRating rating={record.rating} />
-                          <span className="text-[10px] text-gray-400">{record.date}</span>
+              {toyRecords.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center text-gray-400">
+                  <Clock className="mx-auto mb-2 opacity-50" size={24} />
+                  Loading toy feedback from MongoDB...
+                </div>
+              ) : (
+                toyRecords.map((record) => (
+                  <div
+                    key={record.id}
+                    className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md hover:border-purple-100 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="text-2xl w-10 h-10 flex items-center justify-center bg-gray-50 rounded-xl">
+                          {record.emoji || "🧸"}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900 text-sm">{record.toy}</h3>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <StarRating rating={record.rating} />
+                            <span className="text-[10px] text-gray-400">{record.date}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 whitespace-nowrap flex items-center gap-1">
-                      <Clock size={10} />
-                      {record.teacher}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-gray-500 italic mt-3 leading-relaxed border-l-2 border-gray-100 pl-3">
-                    &ldquo;{record.quote}&rdquo;
-                  </p>
-
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {record.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-[10px] bg-purple-50 text-purple-600 font-semibold px-2 py-0.5 rounded-full"
-                      >
-                        {tag}
+                      <span className="text-[10px] uppercase font-bold text-gray-400 whitespace-nowrap flex items-center gap-1">
+                        <Clock size={10} />
+                        {record.teacher}
                       </span>
-                    ))}
+                    </div>
+
+                    {record.quote && (
+                      <p className="text-xs text-gray-500 italic mt-3 leading-relaxed border-l-2 border-gray-100 pl-3">
+                        &ldquo;{record.quote}&rdquo;
+                      </p>
+                    )}
+
+                    {record.tags && record.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {record.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-[10px] bg-purple-50 text-purple-600 font-semibold px-2 py-0.5 rounded-full"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
@@ -446,46 +361,45 @@ export default function AIAgentPage() {
             <div className="flex items-center gap-2 mb-4">
               <Sparkles size={16} className="text-purple-400" />
               <h2 className="text-sm font-bold uppercase tracking-widest text-gray-400">
-                Agent Swarm — 5 Specialized Agents
+                Agent Swarm — Parallel LLM Inference
               </h2>
             </div>
 
             {swarmState === "idle" && (
               <div className="rounded-2xl border border-dashed border-purple-200 bg-purple-50/50 p-12 text-center">
                 <Sparkles size={32} className="text-purple-300 mx-auto mb-3" />
-                <p className="text-gray-500 font-medium">Click &quot;Run Agentic Swarm&quot; to activate</p>
-                <p className="text-xs text-gray-400 mt-1">5 agents will analyze the feedback and converge on a toy recommendation</p>
+                <p className="text-gray-500 font-medium">Click &quot;Run Gemini Swarm&quot; to activate</p>
+                <p className="text-xs text-gray-400 mt-1">4 agents will analyze the feedback in parallel, then 1 agent decides.</p>
               </div>
             )}
 
             {swarmState !== "idle" && (
               <div className="space-y-3">
-                {AGENTS.map((agent, idx) => (
+                {agents.map((agent) => (
                   <AgentCard
                     key={agent.id}
                     agent={agent}
-                    activeIndex={activeAgentIndex}
-                    agentIndex={idx}
-                    messageIndex={idx === activeAgentIndex ? messageIndex : idx < activeAgentIndex ? agent.messages.length - 1 : 0}
+                    isActive={activeIds.has(agent.id)}
+                    isDone={doneIds.has(agent.id)}
                   />
                 ))}
               </div>
             )}
 
             {/* Results */}
-            {showResults && (
+            {swarmState === "done" && swarmResults.length > 0 && (
               <div className="mt-6">
                 <div className="flex items-center gap-2 mb-3">
                   <CheckCircle2 size={16} className="text-green-500" />
                   <h2 className="text-sm font-bold uppercase tracking-widest text-green-600">
-                    Swarm Consensus — Next Week&apos;s Toy Lineup
+                    Swarm Consensus — Gemini Top Recommendations
                   </h2>
                 </div>
 
                 <div className="space-y-3">
-                  {SWARM_RESULTS.map((result, idx) => (
+                  {swarmResults.map((result, idx) => (
                     <div
-                      key={result.toy}
+                      key={result.toy + idx}
                       className="bg-white rounded-2xl border border-green-100 p-4 shadow-sm flex items-center gap-4"
                       style={{ animationDelay: `${idx * 150}ms` }}
                     >
@@ -497,7 +411,7 @@ export default function AIAgentPage() {
                         <div className="flex items-center justify-between">
                           <h3 className="font-bold text-gray-900 text-sm">{result.toy}</h3>
                           <span className="text-xs font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                            {result.score}/100
+                            {result.score || 0}/100
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{result.reason}</p>
