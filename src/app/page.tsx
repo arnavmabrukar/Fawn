@@ -3,12 +3,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Pusher from 'pusher-js';
 import { MetricsHeader } from '@/components/dashboard/MetricsHeader';
+import { AdminNoteComposer } from '@/components/dashboard/AdminNoteComposer';
 import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
 import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
 import { Trash2, Play, ExternalLink } from 'lucide-react';
-import { ActionEntry, IncomingActionPayload, TranscriptEntry, toActionEntry } from '@/lib/live-feed';
+import {
+  ActionEntry,
+  AUDIT_LOG_STORAGE_KEY,
+  FeedBroadcastMessage,
+  IncomingActionPayload,
+  TranscriptEntry,
+  appendUniqueAction,
+  readStoredAuditLog,
+  toActionEntry,
+} from '@/lib/live-feed';
 
 export default function Dashboard() {
+  const sourceIdRef = useRef(`admin-${crypto.randomUUID()}`);
   const [isOnCall, setIsOnCall] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [actions, setActions] = useState<ActionEntry[]>([]);
@@ -16,6 +27,10 @@ export default function Dashboard() {
   const [leads, setLeads] = useState(12);
   const [calls, setCalls] = useState(45);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
+
+  useEffect(() => {
+    setActions(readStoredAuditLog().map(toActionEntry));
+  }, []);
 
   useEffect(() => {
     // Determine the environment config
@@ -37,12 +52,16 @@ export default function Dashboard() {
     });
 
     channel.bind('action', (data: IncomingActionPayload) => {
-      setActions(prev => [...prev, toActionEntry(data)]);
+      setActions(prev => appendUniqueAction(prev, data));
       
       // Bump lead count for notable actions
       if (data.type === 'calendar' || data.type === 'document') {
         setLeads(prev => prev + 1);
       }
+    });
+
+    channel.bind('audit-clear', () => {
+      setActions([]);
     });
 
     channel.bind('call-start', () => {
@@ -63,6 +82,53 @@ export default function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) {
+      return;
+    }
+
+    const channel = new BroadcastChannel('fawn-feed');
+    channel.onmessage = (event: MessageEvent<FeedBroadcastMessage>) => {
+      const message = event.data;
+
+      if (message.sourceId === sourceIdRef.current) {
+        return;
+      }
+
+      if (message.kind === 'clear') {
+        setActions([]);
+        return;
+      }
+
+      setActions(prev => appendUniqueAction(prev, message.action));
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== AUDIT_LOG_STORAGE_KEY) {
+        return;
+      }
+
+      if (!event.newValue) {
+        setActions([]);
+        return;
+      }
+
+      const nextActions = JSON.parse(event.newValue) as IncomingActionPayload[];
+      setActions(Array.isArray(nextActions) ? nextActions.map(toActionEntry) : []);
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
   // Ensure timers are cleaned up on unmount
   useEffect(() => {
     return () => {
@@ -76,6 +142,7 @@ export default function Dashboard() {
     setIsOnCall(false);
     setTranscript([]);
     setActions([]);
+    setFawnMessage('');
   };
 
   const startSimulation = () => {
@@ -163,6 +230,21 @@ export default function Dashboard() {
       </div>
 
       <MetricsHeader leads={leads} calls={calls} />
+
+      <div className="mb-6">
+        <AdminNoteComposer
+          sourceId={sourceIdRef.current}
+          onSubmitted={(action) => setActions(prev => appendUniqueAction(prev, {
+            type: action.type,
+            title: action.title,
+            description: action.description,
+            childName: action.childName,
+            checkedInAt: action.checkedInAt,
+            timestamp: action.timestamp.toISOString(),
+          }))}
+          onCleared={() => setActions([])}
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <LiveAgentPanel isOnCall={isOnCall} transcript={transcript} message={fawnMessage} />

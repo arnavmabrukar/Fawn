@@ -57,9 +57,9 @@ export function LiveAgentPanel({ isOnCall, transcript, message }: LiveAgentPanel
             </div>
             <div className="flex-1 min-w-0">
                <p className="text-xs font-bold text-daycare-teal uppercase tracking-widest leading-none mb-1">Agent Speaking</p>
-               <p className="text-sm font-medium text-gray-800 line-clamp-1 italic">
-                 "{message}"
-               </p>
+	               <p className="text-sm font-medium text-gray-800 line-clamp-1 italic">
+	                 &quot;{message}&quot;
+	               </p>
             </div>
             <div className="flex space-x-0.5">
                <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-ping" />

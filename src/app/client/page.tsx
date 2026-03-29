@@ -5,7 +5,15 @@ import Pusher from 'pusher-js';
 import { ArrowLeft, Radio, WandSparkles } from 'lucide-react';
 import { ClientAuditLog } from '@/components/client/ClientAuditLog';
 import { ClientCheckInCard } from '@/components/client/ClientCheckInCard';
-import { ActionEntry, IncomingActionPayload, toActionEntry } from '@/lib/live-feed';
+import {
+  ActionEntry,
+  AUDIT_LOG_STORAGE_KEY,
+  FeedBroadcastMessage,
+  IncomingActionPayload,
+  appendUniqueAction,
+  readStoredAuditLog,
+  toActionEntry,
+} from '@/lib/live-feed';
 
 const demoAuditSeed = [
   {
@@ -28,8 +36,13 @@ const demoAuditSeed = [
 ] as const;
 
 export default function ClientPortalPage() {
+  const sourceId = React.useRef(`client-${crypto.randomUUID()}`);
   const [actions, setActions] = useState<ActionEntry[]>([]);
   const [connectionState, setConnectionState] = useState('Connecting');
+
+  useEffect(() => {
+    setActions(readStoredAuditLog().map(toActionEntry));
+  }, []);
 
   useEffect(() => {
     const pusherAppKey = process.env.NEXT_PUBLIC_PUSHER_KEY || 'key';
@@ -46,12 +59,57 @@ export default function ClientPortalPage() {
     pusher.connection.bind('unavailable', () => setConnectionState('Unavailable'));
 
     channel.bind('action', (data: IncomingActionPayload) => {
-      setActions(prev => [...prev, toActionEntry(data)]);
+      setActions(prev => appendUniqueAction(prev, data));
     });
 
+    channel.bind('audit-clear', () => {
+      setActions([]);
+    });
+
+    let browserChannel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      browserChannel = new BroadcastChannel('fawn-feed');
+      browserChannel.onmessage = (event: MessageEvent<FeedBroadcastMessage>) => {
+        const message = event.data;
+
+        if (message.sourceId === sourceId.current) {
+          return;
+        }
+
+        if (message.kind === 'clear') {
+          setActions([]);
+          return;
+        }
+
+        setActions(prev => appendUniqueAction(prev, message.action));
+      };
+    }
+
     return () => {
+      browserChannel?.close();
       pusher.unsubscribe('fawn-live');
       pusher.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== AUDIT_LOG_STORAGE_KEY) {
+        return;
+      }
+
+      if (!event.newValue) {
+        setActions([]);
+        return;
+      }
+
+      const nextActions = JSON.parse(event.newValue) as IncomingActionPayload[];
+      setActions(Array.isArray(nextActions) ? nextActions.map(toActionEntry) : []);
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 
