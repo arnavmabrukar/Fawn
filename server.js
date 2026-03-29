@@ -570,6 +570,13 @@ wss.on('connection', (twWs) => {
                                 }]
                             }
                         }));
+                        // Nudge Gemini to continue the conversation after tool use
+                        gemWs.send(JSON.stringify({
+                            clientContent: {
+                                turns: [],
+                                turnComplete: true
+                            }
+                        }));
                         console.log(`[Gemini ToolResponse] Sent:`, responseString);
                     } else {
                         // Instead of sending "error", stringify the available rooms nicely so Gemini can recover natively
@@ -588,6 +595,13 @@ wss.on('connection', (twWs) => {
                                 }]
                             }
                         }));
+                        // Nudge Gemini to continue the conversation after tool use
+                        gemWs.send(JSON.stringify({
+                            clientContent: {
+                                turns: [],
+                                turnComplete: true
+                            }
+                        }));
                         console.log(`[Gemini ToolResponse] Sent correction for unknown room: ${safeName}`);
                     }
                 } catch (dbErr) {
@@ -601,12 +615,19 @@ wss.on('connection', (twWs) => {
                             }]
                         }
                     }));
+                    // Nudge Gemini to continue the conversation after tool use
+                    gemWs.send(JSON.stringify({
+                        clientContent: {
+                            turns: [],
+                            turnComplete: true
+                        }
+                    }));
                 }
                 return; // Prevent the generic tool response below from sending twice
             }
 
             // Respond back to Gemini WS so she keeps talking for BookCalendar and GenerateDoc
-            const response = {
+            gemWs.send(JSON.stringify({
                 toolResponse: {
                     functionResponses: [{
                         id: call.id,
@@ -614,8 +635,14 @@ wss.on('connection', (twWs) => {
                         response: { result: "success" }
                     }]
                 }
-            };
-            gemWs.send(JSON.stringify(response));
+            }));
+            // Nudge Gemini to continue the conversation after tool use
+            gemWs.send(JSON.stringify({
+                clientContent: {
+                    turns: [],
+                    turnComplete: true
+                }
+            }));
         });
     }
   });
