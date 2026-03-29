@@ -226,20 +226,25 @@ export function AdminDashboard() {
 
   return (
     <div className="min-h-screen p-6 md:p-8 max-w-[1400px] mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Director&apos;s Cockpit</h1>
           <p className="text-gray-500 mt-1">Live state synchronized via WebSockets</p>
         </div>
 
-        <div className="flex gap-3">
-          <a
-            href="/ai-agent"
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all font-medium text-sm shadow-sm hover:shadow-md"
+        <div className="flex flex-wrap items-center gap-3 md:justify-end">
+          <button
+            onClick={startSimulation}
+            disabled={isOnCall}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium text-sm transition-all shadow-sm ${
+              isOnCall
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
+                : 'bg-daycare-teal text-white hover:bg-teal-700 hover:shadow-md'
+            }`}
           >
-            <Sparkles size={16} />
-            AI Agent
-          </a>
+            <Play size={16} fill="currentColor" />
+            Simulate Call
+          </button>
           <a
             href="/client"
             className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-sm"
@@ -254,25 +259,19 @@ export function AdminDashboard() {
             <Database size={16} />
             View Database
           </button>
+          <a
+            href="/ai-agent"
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all font-medium text-sm shadow-sm hover:shadow-md"
+          >
+            <Sparkles size={16} />
+            AI Agent
+          </a>
           <button
             onClick={clearDashboard}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
           >
             <Trash2 size={16} />
             Clear Dashboard
-          </button>
-
-          <button
-            onClick={startSimulation}
-            disabled={isOnCall}
-            className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium text-sm transition-all shadow-sm ${
-              isOnCall
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
-                : 'bg-daycare-teal text-white hover:bg-teal-700 hover:shadow-md'
-            }`}
-          >
-            <Play size={16} fill="currentColor" />
-            Simulate Call
           </button>
         </div>
       </div>
@@ -288,8 +287,9 @@ export function AdminDashboard() {
         />
       </div>
 
-      <div className="mt-6 mb-6">
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2 xl:items-stretch">
         <AdminNoteComposer
+          compact
           sourceId={sourceIdRef.current}
           onSubmitted={(action) =>
             setActions(prev =>
@@ -305,21 +305,21 @@ export function AdminDashboard() {
           }
           onCleared={() => setActions([])}
         />
-      </div>
 
-      <div className="mt-6 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-        <div className="mb-5">
-          <h2 className="text-xl font-bold text-gray-800">Tour Calendar</h2>
-          <p className="text-sm text-gray-500">Shared Google Calendar for scheduled tours and availability.</p>
-        </div>
+        <div className="flex h-full flex-col rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-5">
+            <h2 className="text-xl font-bold text-gray-800">Tour Calendar</h2>
+            <p className="text-sm text-gray-500">Shared Google Calendar for scheduled tours and availability.</p>
+          </div>
 
-        <div className="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50">
-          <iframe
-            src="https://calendar.google.com/calendar/embed?src=96c2d905f9f8680926a24f1fc5d32d65acc1a67e9da6729c8e1d6ba8bcc689f5%40group.calendar.google.com&ctz=America%2FNew_York&mode=WEEK"
-            title="Fawn Google Calendar"
-            className="h-[480px] w-full border-0 md:h-[560px]"
-            scrolling="no"
-          />
+          <div className="flex-1 overflow-hidden rounded-3xl border border-gray-100 bg-gray-50">
+            <iframe
+              src="https://calendar.google.com/calendar/embed?src=96c2d905f9f8680926a24f1fc5d32d65acc1a67e9da6729c8e1d6ba8bcc689f5%40group.calendar.google.com&ctz=America%2FNew_York&mode=WEEK"
+              title="Fawn Google Calendar"
+              className="h-[460px] w-full border-0 md:h-[520px]"
+              scrolling="no"
+            />
+          </div>
         </div>
       </div>
 

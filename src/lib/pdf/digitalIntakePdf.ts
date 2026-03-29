@@ -17,6 +17,7 @@ const BRAND = {
   subtitle: "Digital Intake Summary",
   supportLine: "Prepared with Fawn AI",
   accent: [29, 59, 54] as const,
+  line: [220, 227, 232] as const,
   muted: [107, 114, 128] as const,
   body: [31, 41, 55] as const,
 };
@@ -70,24 +71,14 @@ function intakeId(data: IntakeDocData) {
   return `${data.timestamp.split("T")[0]}-${data.childName.toLowerCase().slice(0, 3)}`;
 }
 
-function buildNarrative(data: IntakeDocData) {
-  const medicalSummary =
+function buildOverview(data: IntakeDocData) {
+  return [
+    `${data.childName} is a ${data.age}-year-old child associated with parent or guardian ${data.parentName}. This summary is intended for internal intake review and enrollment follow-up.`,
     data.medicalNotes === "None"
       ? "No immediate medical concerns were reported during intake."
-      : `Medical notes reported for ${data.childName} include ${data.medicalNotes}.`;
-
-  const allergenSummary =
-    data.medicalNotes === "None"
-      ? ""
-      : `Additional allergen guidance for staff review: ${data.hiddenAllergens}.`;
-
-  return [
-    `This letter summarizes the intake information currently on file for ${data.childName}, a ${data.age}-year-old child associated with parent or guardian ${data.parentName}.`,
-    medicalSummary,
-    `Developmental and care guidance recorded at intake: ${data.ageCare}.`,
-    allergenSummary,
-    "This summary is intended for internal review and onboarding preparation before the family tour or enrollment follow-up.",
-  ].filter(Boolean);
+      : `Reported medical notes include ${data.medicalNotes}.`,
+    `Developmental guidance recorded at intake focuses on ${data.ageCare.charAt(0).toLowerCase()}${data.ageCare.slice(1)}`,
+  ];
 }
 
 export async function exportDigitalIntakePdf(data: IntakeDocData) {
@@ -99,103 +90,86 @@ export async function exportDigitalIntakePdf(data: IntakeDocData) {
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 42;
-  const contentWidth = pageWidth - margin * 2;
-  const logoSize = 34;
-  let cursorY = margin;
-  const availableHeight = pageHeight - margin * 2;
-  const narrative = buildNarrative(data);
+  const marginX = 48;
+  const marginY = 62;
+  const contentWidth = pageWidth - marginX * 2;
+  const overview = buildOverview(data);
+  const medicalSummary =
+    data.medicalNotes === "None" ? "No immediate medical concerns reported." : data.medicalNotes;
+  const allergenSummary =
+    data.medicalNotes === "None" ? "No additional allergen guidance generated." : data.hiddenAllergens;
 
-  const measureWrappedTextHeight = (
-    text: string,
-    fontSize: number,
-    lineGap: number,
-    maxWidth = contentWidth,
-  ) => {
+  const measureTextBlock = (text: string, fontSize: number, maxWidth = contentWidth, lineGap = 2) => {
     pdf.setFontSize(fontSize);
     const lines = pdf.splitTextToSize(text, maxWidth);
     return lines.length * fontSize * 1.15 + Math.max(lines.length - 1, 0) * lineGap;
   };
 
   const getScale = () => {
-    const estimateHeight = (scale: number) => {
-      const headerHeight = 62 * scale;
-      const introHeight = 34 * scale;
-      const closingHeight = 48 * scale;
-      const blockSpacing = 8 * scale;
-      const sectionGap = 12 * scale;
-      const sectionHeadingHeight = 22 * scale;
+    const estimate = (scale: number) => {
+      const overviewHeight = overview.reduce((sum, paragraph) => {
+        return sum + measureTextBlock(paragraph, 10 * scale, contentWidth, 2 * scale) + 8 * scale;
+      }, 0);
 
-      let total = headerHeight + introHeight + closingHeight;
+      const profileHeight =
+        measureTextBlock(`Child Name: ${data.childName}`, 10 * scale) +
+        measureTextBlock(`Age Group: ${data.age} Years Old`, 10 * scale) +
+        measureTextBlock(`Parent / Guardian: ${data.parentName}`, 10 * scale) +
+        20 * scale;
 
-      narrative.forEach((paragraph) => {
-        total += measureWrappedTextHeight(paragraph, 10 * scale, 1.5 * scale);
-        total += blockSpacing;
-      });
+      const medicalHeight =
+        measureTextBlock(medicalSummary, 10 * scale) +
+        measureTextBlock(`Staff Alert: ${allergenSummary}`, 9 * scale) +
+        20 * scale;
 
-      total += sectionGap + sectionHeadingHeight;
-      total += measureWrappedTextHeight(`Child Name: ${data.childName}`, 10 * scale, 1 * scale) + 4 * scale;
-      total += measureWrappedTextHeight(`Age: ${data.age} years old`, 10 * scale, 1 * scale) + 4 * scale;
-      total += measureWrappedTextHeight(`Parent / Guardian: ${data.parentName}`, 10 * scale, 1 * scale) + 8 * scale;
+      const developmentalHeight = measureTextBlock(data.ageCare, 10 * scale, contentWidth, 2 * scale) + 16 * scale;
 
-      total += sectionGap + sectionHeadingHeight;
-      total += measureWrappedTextHeight(
-        data.medicalNotes === "None" ? "Medical Notes: No immediate medical concerns reported." : `Medical Notes: ${data.medicalNotes}`,
-        10 * scale,
-        1 * scale,
-      ) + 5 * scale;
-      total += measureWrappedTextHeight(
-        data.medicalNotes === "None"
-          ? "Hidden Allergens: No additional allergen escalation was generated for this intake."
-          : `Hidden Allergens / Staff Alert: ${data.hiddenAllergens}`,
-        10 * scale,
-        1 * scale,
-      ) + 8 * scale;
-
-      total += sectionGap + sectionHeadingHeight;
-      total += measureWrappedTextHeight(data.ageCare, 10 * scale, 1 * scale) + 10 * scale;
-
-      return total;
+      return (
+        92 * scale +
+        overviewHeight +
+        profileHeight +
+        medicalHeight +
+        developmentalHeight +
+        88 * scale +
+        84 * scale
+      );
     };
 
     let scale = 1;
-    while (scale > 0.72 && estimateHeight(scale) > availableHeight) {
+    while (scale > 0.68 && estimate(scale) > (pageHeight - marginY * 2) * 0.98) {
       scale -= 0.04;
     }
-
     return scale;
   };
 
   const scale = getScale();
   const sizes = {
-    company: 16 * scale,
+    title: 18 * scale,
+    subtitle: 10 * scale,
     meta: 9 * scale,
-    salutation: 11 * scale,
+    section: 12 * scale,
     body: 10 * scale,
-    section: 11 * scale,
+    small: 9 * scale,
     signoff: 10 * scale,
-    dividerGap: 18 * scale,
-    paragraphGap: 8 * scale,
-    lineGap: 1.5 * scale,
-    itemGap: 4 * scale,
-    sectionGap: 12 * scale,
   };
+
+  let cursorY = marginY;
 
   const drawWrappedText = (
     text: string,
     options?: {
       fontSize?: number;
-      color?: readonly [number, number, number];
-      indent?: number;
-      lineGap?: number;
-      maxWidth?: number;
       font?: "normal" | "bold" | "italic";
+      color?: readonly [number, number, number];
+      maxWidth?: number;
+      lineGap?: number;
+      x?: number;
     },
   ) => {
-    const fontSize = options?.fontSize ?? 11;
-    const lineGap = options?.lineGap ?? 6;
-    const indent = options?.indent ?? 0;
-    const maxWidth = options?.maxWidth ?? contentWidth - indent;
+    const fontSize = options?.fontSize ?? sizes.body;
+    const maxWidth = options?.maxWidth ?? contentWidth;
+    const lineGap = options?.lineGap ?? 2 * scale;
+    const x = options?.x ?? marginX;
 
     pdf.setFont("helvetica", options?.font ?? "normal");
     pdf.setFontSize(fontSize);
@@ -203,97 +177,88 @@ export async function exportDigitalIntakePdf(data: IntakeDocData) {
 
     const lines = pdf.splitTextToSize(text, maxWidth);
     const blockHeight = lines.length * fontSize * 1.15 + Math.max(lines.length - 1, 0) * lineGap;
-
-    pdf.text(lines, margin + indent, cursorY, { baseline: "top" });
+    pdf.text(lines, x, cursorY, { baseline: "top" });
     cursorY += blockHeight;
   };
 
-  const drawSectionHeading = (title: string) => {
-    pdf.setDrawColor(226, 232, 240);
-    pdf.line(margin, cursorY, pageWidth - margin, cursorY);
-    cursorY += 10 * scale;
+  const drawDivider = (gapTop = 0, gapBottom = 12 * scale) => {
+    cursorY += gapTop;
+    pdf.setDrawColor(...BRAND.line);
+    pdf.setLineWidth(1);
+    pdf.line(marginX, cursorY, pageWidth - marginX, cursorY);
+    cursorY += gapBottom;
+  };
+
+  const drawSectionTitle = (title: string) => {
+    drawDivider(6 * scale, 10 * scale);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(sizes.section);
     pdf.setTextColor(...BRAND.accent);
-    pdf.text(title.toUpperCase(), margin, cursorY);
-    cursorY += 12 * scale;
+    pdf.text(title.toUpperCase(), marginX, cursorY);
+    cursorY += 14 * scale;
   };
 
   const logoDataUrl = await svgToPngDataUrl("/fawn-deer.svg");
-  pdf.addImage(logoDataUrl, "PNG", margin, cursorY, logoSize, logoSize);
+  pdf.addImage(logoDataUrl, "PNG", marginX, cursorY + 2 * scale, 26 * scale, 26 * scale);
 
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(sizes.company);
+  pdf.setFontSize(sizes.title);
   pdf.setTextColor(...BRAND.accent);
-  pdf.text(BRAND.name, margin + logoSize + 12, cursorY + 9 * scale);
+  pdf.text(BRAND.name, marginX + 38 * scale, cursorY + 11 * scale);
 
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(sizes.meta);
+  pdf.setFontSize(sizes.subtitle);
   pdf.setTextColor(...BRAND.muted);
-  pdf.text(BRAND.subtitle, margin + logoSize + 12, cursorY + 22 * scale);
-  pdf.text(BRAND.supportLine, margin + logoSize + 12, cursorY + 34 * scale);
+  pdf.text(BRAND.subtitle, marginX + 38 * scale, cursorY + 24 * scale);
+  pdf.text(BRAND.supportLine, marginX + 38 * scale, cursorY + 35 * scale);
 
-  pdf.setFont("helvetica", "normal");
   pdf.setFontSize(sizes.meta);
-  pdf.setTextColor(...BRAND.muted);
-  pdf.text(`Date: ${formatDate(data.timestamp)}`, pageWidth - margin, cursorY + 10 * scale, { align: "right" });
-  pdf.text(`Document ID: ${intakeId(data)}`, pageWidth - margin, cursorY + 24 * scale, { align: "right" });
+  pdf.text(`Date: ${formatDate(data.timestamp)}`, pageWidth - marginX, cursorY + 12 * scale, { align: "right" });
+  pdf.text(`Document ID: ${intakeId(data)}`, pageWidth - marginX, cursorY + 25 * scale, { align: "right" });
 
-  cursorY += 48 * scale;
+  cursorY += 46 * scale;
+  drawDivider(0, 16 * scale);
 
-  pdf.setDrawColor(...BRAND.accent);
-  pdf.setLineWidth(1);
-  pdf.line(margin, cursorY, pageWidth - margin, cursorY);
-  cursorY += sizes.dividerGap;
-
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(sizes.salutation);
-  pdf.setTextColor(...BRAND.body);
-  pdf.text("To whom it may concern,", margin, cursorY);
-  cursorY += 16 * scale;
-
-  narrative.forEach((paragraph) => {
-    drawWrappedText(paragraph, { fontSize: sizes.body, lineGap: sizes.lineGap });
-    cursorY += sizes.paragraphGap;
+  overview.forEach((paragraph) => {
+    drawWrappedText(paragraph, { fontSize: sizes.body, lineGap: 2 * scale });
+    cursorY += 8 * scale;
   });
 
-  drawSectionHeading("Family Profile");
-  drawWrappedText(`Child Name: ${data.childName}`, { fontSize: sizes.body, lineGap: sizes.lineGap });
-  cursorY += sizes.itemGap;
-  drawWrappedText(`Age: ${data.age} years old`, { fontSize: sizes.body, lineGap: sizes.lineGap });
-  cursorY += sizes.itemGap;
-  drawWrappedText(`Parent / Guardian: ${data.parentName}`, { fontSize: sizes.body, lineGap: sizes.lineGap });
-  cursorY += sizes.sectionGap;
+  drawSectionTitle("Family Profile");
+  drawWrappedText(`Child Name: ${data.childName}`, { fontSize: sizes.body, font: "bold" });
+  cursorY += 4 * scale;
+  drawWrappedText(`Age Group: ${data.age} Years Old`, { fontSize: sizes.body, font: "bold" });
+  cursorY += 4 * scale;
+  drawWrappedText(`Parent / Guardian: ${data.parentName}`, { fontSize: sizes.body, font: "bold" });
 
-  drawSectionHeading("Medical and Safety");
-  drawWrappedText(
-    data.medicalNotes === "None" ? "Medical Notes: No immediate medical concerns reported." : `Medical Notes: ${data.medicalNotes}`,
-    { fontSize: sizes.body, lineGap: sizes.lineGap },
-  );
-  cursorY += 5 * scale;
-  drawWrappedText(
-    data.medicalNotes === "None"
-      ? "Hidden Allergens: No additional allergen escalation was generated for this intake."
-      : `Hidden Allergens / Staff Alert: ${data.hiddenAllergens}`,
-    { fontSize: sizes.body, lineGap: sizes.lineGap },
-  );
-  cursorY += sizes.sectionGap;
+  drawSectionTitle("Medical and Safety");
+  drawWrappedText(`Medical Notes: ${medicalSummary}`, { fontSize: sizes.body, lineGap: 2 * scale });
+  cursorY += 6 * scale;
+  drawWrappedText(`Staff Alert: ${allergenSummary}`, {
+    fontSize: sizes.small,
+    color: BRAND.muted,
+    lineGap: 2 * scale,
+  });
 
-  drawSectionHeading("Developmental Focus");
-  drawWrappedText(data.ageCare, { fontSize: sizes.body, font: "italic", lineGap: sizes.lineGap });
-  cursorY += 16 * scale;
+  drawSectionTitle("Developmental Focus");
+  drawWrappedText(data.ageCare, {
+    fontSize: sizes.body,
+    font: "italic",
+    lineGap: 2 * scale,
+  });
 
+  cursorY += 18 * scale;
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(sizes.signoff);
   pdf.setTextColor(...BRAND.body);
-  pdf.text("Sincerely,", margin, cursorY);
-  cursorY += 16 * scale;
+  pdf.text("Sincerely,", marginX, cursorY);
+  cursorY += 18 * scale;
   pdf.setFont("helvetica", "bold");
-  pdf.text("Fawn AI Intake Assistant", margin, cursorY);
+  pdf.text("Fawn AI Intake Assistant", marginX, cursorY);
   cursorY += 12 * scale;
   pdf.setFont("helvetica", "normal");
   pdf.setTextColor(...BRAND.muted);
-  pdf.text(BRAND.name, margin, cursorY);
+  pdf.text(BRAND.name, marginX, cursorY);
 
   pdf.save(`intake-summary-${intakeId(data)}.pdf`);
 }
