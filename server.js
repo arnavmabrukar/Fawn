@@ -4,10 +4,21 @@ const WebSocket = require('ws');
 const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 const { google } = require('googleapis');
+const { connectDB, Lead, Call } = require('./db');
+
+// Initialize MongoDB
+connectDB();
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Allow the Next.js frontend (port 3000) to call our API (port 8080)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
 
 const PORT = process.env.PORT || 8080;
 
@@ -38,6 +49,17 @@ const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 
 async function appendLeadToSheet(name, childName, age, notes = "") {
   try {
+    // 1. Save to MongoDB (Permanent Brain)
+    const newLead = new Lead({
+      parentName: name,
+      childName,
+      childAge: parseInt(age) || 0,
+      medicalNotes: notes
+    });
+    await newLead.save();
+    console.log(`[MongoDB] Lead saved for ${childName}`);
+
+    // 2. Append to Google Sheets (Shared View)
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
     const range = 'Sheet1!A:E';
     const values = [[
@@ -55,7 +77,7 @@ async function appendLeadToSheet(name, childName, age, notes = "") {
     });
     console.log(`[Google Sheets] Lead added for ${childName}`);
   } catch (err) {
-    console.error('[Google Sheets Error]', err.message);
+    console.error('[DB/Sheets Error]', err.message);
   }
 }
 
@@ -152,6 +174,35 @@ app.post('/api/feed/action', (req, res) => {
   return res.json({ ok: true });
 });
 
+app.get('/api/history', async (req, res) => {
+  try {
+    const historicalLeads = await Lead.find().sort({ createdAt: -1 }).limit(10);
+    const historicalCalls = await Call.find().sort({ startTime: -1 }).limit(10);
+    
+    // Transform into frontend format
+    const leads = historicalLeads.map(l => ({
+      id: l._id,
+      parentName: l.parentName,
+      childName: l.childName,
+      age: l.childAge,
+      medicalNotes: l.medicalNotes,
+      status: l.status,
+      timestamp: l.createdAt
+    }));
+
+    const calls = historicalCalls.map(c => ({
+      id: c._id,
+      timestamp: c.startTime,
+      duration: c.duration || 0,
+      status: c.status
+    }));
+
+    res.json({ leads, calls });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/check-in', (req, res) => {
   const { childName, checkedInAt, notes } = req.body || {};
 
@@ -174,6 +225,7 @@ const wss = new WebSocket.Server({ server, path: '/api/media' });
 wss.on('connection', (twWs) => {
   console.log('[Twilio] Connected');
   let streamSid = null;
+  let isSetupComplete = false;
   
   if (!process.env.GEMINI_API_KEY) {
       console.error("[Config Error] GEMINI_API_KEY is missing in .env");
@@ -199,25 +251,25 @@ wss.on('connection', (twWs) => {
         }
       },
       system_instruction: {
-        parts: [{ text: "You are Fawn, an AI receptionist for Sunshine Daycare. You must answer calls, help parents book tours, and generate intake forms. If a parent asks why they are talking to a robot, warmly explain that you handle the phones so the teachers can focus 100% of their attention on taking care of the kids! Also explain that being an AI allows you to instantly log information, book tours, and eventually automate messages to parents so nothing ever gets missed. Keep responses extremely brief and conversational! Ask one question at a time. Use tools when appropriate." }]
+        parts: [{ text: "You are Fawn, an AI receptionist for Sunshine Daycare. You must answer calls warmly and help parents. If they ask about you being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief!" }]
       },
       tools: [{
         function_declarations: [
           {
             name: "BookCalendar",
-            description: "Books a daycare tour on the calendar.",
+            description: "Books a daycare tour.",
             parameters: {
               type: "OBJECT",
               properties: {
-                date_time: { type: "STRING", description: "The date and time of the tour" },
-                name: { type: "STRING", description: "Parent's name" }
+                date_time: { type: "STRING" },
+                name: { type: "STRING" }
               },
               required: ["date_time", "name"]
             }
           },
           {
             name: "GenerateDoc",
-            description: "Generates an intake form document for a child.",
+            description: "Generates an intake form.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -236,6 +288,7 @@ wss.on('connection', (twWs) => {
   gemWs.on('open', () => {
     console.log('[Gemini] WebSocket OPEN - Sending Setup Message...');
     gemWs.send(JSON.stringify(setupMsg));
+    console.log('[Gemini] Setup Payload Sent! Model:', setupMsg.setup.model);
   });
 
   gemWs.on('close', (code, reason) => {
@@ -256,6 +309,7 @@ wss.on('connection', (twWs) => {
     }
     
     if (msg.setupComplete) {
+        isSetupComplete = true;
         console.log('[Gemini] Setup Complete! Fawn is ready.');
         // Ask Gemini to greet the user
         gemWs.send(JSON.stringify({
@@ -388,38 +442,59 @@ twWs.on('message', (message) => {
       streamSid = msg.start.streamSid;
       console.log(`[Twilio] Stream Started: ${streamSid}`);
       emitCallStart();
+      
+      // Log Call to MongoDB
+      const newCall = new Call({ streamSid, startTime: new Date() });
+      newCall.save().catch(err => console.error('[MongoDB] Call Start Log Error:', err.message));
     } else if (msg.event === 'media') {
-      // Decode 8kHz mu-law coming from Twilio -> 16kHz PCM for Gemini
-      if (gemWs.readyState === WebSocket.OPEN) {
-          const mBuffer = Buffer.from(msg.media.payload, 'base64');
-          
-          let wav = new WaveFile();
-          wav.fromScratch(1, 8000, '8m', mBuffer);
-          wav.fromMuLaw();
-          wav.toSampleRate(16000);
-          
-          const pcmHeaderless = Buffer.from(wav.data.samples);
-          const pcmBase64 = pcmHeaderless.toString('base64');
-          
-          const request = {
-            realtimeInput: {
-              mediaChunks: [{
-                mimeType: "audio/pcm;rate=16000",
-                data: pcmBase64
-              }]
-            }
-          };
-          gemWs.send(JSON.stringify(request));
-      }
+          // Decode 8kHz mu-law coming from Twilio -> 16kHz PCM for Gemini
+          if (gemWs.readyState === WebSocket.OPEN && isSetupComplete) {
+              const mBuffer = Buffer.from(msg.media.payload, 'base64');
+              
+              let wav = new WaveFile();
+              wav.fromScratch(1, 8000, '8m', mBuffer);
+              wav.fromMuLaw();
+              wav.toSampleRate(16000);
+              
+              const pcmHeaderless = Buffer.from(wav.data.samples);
+              const pcmBase64 = pcmHeaderless.toString('base64');
+              
+              const request = {
+                realtimeInput: {
+                  mediaChunks: [{
+                    mimeType: "audio/pcm;rate=16000",
+                    data: pcmBase64
+                  }]
+                }
+              };
+              gemWs.send(JSON.stringify(request));
+          }
     } else if (msg.event === 'stop') {
       console.log('[Twilio] Stream Stopped');
       gemWs.close();
     }
   });
 
-  twWs.on('close', () => {
+  twWs.on('close', async () => {
     console.log('[Twilio] Connection Closed');
     emitCallEnd();
+    
+    // Update Call record in MongoDB
+    if (streamSid) {
+      try {
+        const endTime = new Date();
+        const callRecord = await Call.findOne({ streamSid }).sort({ startTime: -1 });
+        if (callRecord) {
+          callRecord.endTime = endTime;
+          callRecord.duration = Math.floor((endTime - callRecord.startTime) / 1000);
+          await callRecord.save();
+          console.log(`[MongoDB] Call record updated. Duration: ${callRecord.duration}s`);
+        }
+      } catch (err) {
+        console.error('[MongoDB] Call End Update Error:', err.message);
+      }
+    }
+
     if (gemWs.readyState === WebSocket.OPEN) gemWs.close();
   });
 });

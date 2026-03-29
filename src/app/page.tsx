@@ -5,7 +5,8 @@ import Pusher from 'pusher-js';
 import { MetricsHeader } from '@/components/dashboard/MetricsHeader';
 import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
 import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
-import { Trash2, Play, ExternalLink } from 'lucide-react';
+import { HistoryModal } from '@/components/dashboard/HistoryModal';
+import { Trash2, Play, ExternalLink, Database } from 'lucide-react';
 import { ActionEntry, IncomingActionPayload, TranscriptEntry, toActionEntry } from '@/lib/live-feed';
 
 export default function Dashboard() {
@@ -13,8 +14,11 @@ export default function Dashboard() {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [actions, setActions] = useState<ActionEntry[]>([]);
   const [fawnMessage, setFawnMessage] = useState<string>('');
-  const [leads, setLeads] = useState(12);
-  const [calls, setCalls] = useState(45);
+  const [leads, setLeads] = useState(0);
+  const [calls, setCalls] = useState(0);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyLeads, setHistoryLeads] = useState<any[]>([]);
+  const [historyCalls, setHistoryCalls] = useState<any[]>([]);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   useEffect(() => {
@@ -56,6 +60,28 @@ export default function Dashboard() {
     channel.bind('call-end', () => {
         setIsOnCall(false);
     });
+
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('http://localhost:8080/api/history');
+        const data = await res.json();
+        
+        if (data.leads) {
+          setHistoryLeads(data.leads);
+          // Set cumulative metrics based on approximate DB size
+          setLeads(data.leads.length);
+        }
+        
+        if (data.calls) {
+          setHistoryCalls(data.calls);
+          setCalls(data.calls.length);
+        }
+      } catch (err) {
+        console.error('Failed to hydrate dashboard:', err);
+      }
+    };
+
+    fetchHistory();
 
     return () => {
       pusher.unsubscribe('fawn-live');
@@ -139,6 +165,13 @@ export default function Dashboard() {
             <ExternalLink size={16} />
             Client Portal
           </a>
+          <button
+            onClick={() => setIsHistoryOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-daycare-teal rounded-lg border border-teal-100 hover:bg-teal-50 transition-colors font-medium text-sm"
+          >
+            <Database size={16} />
+            View History
+          </button>
           <button 
             onClick={clearDashboard}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
@@ -168,6 +201,13 @@ export default function Dashboard() {
         <LiveAgentPanel isOnCall={isOnCall} transcript={transcript} message={fawnMessage} />
         <AutonomousActionsFeed actions={actions} />
       </div>
+
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        leads={historyLeads}
+        calls={historyCalls}
+      />
     </div>
   );
 }
