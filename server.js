@@ -107,6 +107,31 @@ async function bookTourOnCalendar(name, dateTime) {
   }
 }
 
+async function bookDropInOnCalendar(name, roomName) {
+    try {
+        const soon = new Date(Date.now() + 60 * 60000); // 1 hour from now
+        const event = {
+            summary: `Drop-In: ${roomName} Room`,
+            description: `Automatic drop-in expected via Fawn AI for parent: ${name || 'Unknown'}`,
+            start: {
+                dateTime: soon.toISOString(),
+                timeZone: 'UTC',
+            },
+            end: {
+                dateTime: new Date(soon.getTime() + 30 * 60000).toISOString(),
+                timeZone: 'UTC',
+            },
+        };
+        await calendar.events.insert({
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+            resource: event,
+        });
+        console.log(`[Google Calendar] Drop-In booked for ${roomName} room at ${soon.toISOString()}`);
+    } catch (err) {
+        console.error('[Google Calendar Error Drop-In]', err.message);
+    }
+}
+
 function emitAction(type, title, description, extra = {}) {
   try {
     pusher.trigger('fawn-live', 'action', {
@@ -370,7 +395,7 @@ wss.on('connection', (twWs) => {
         }
       },
       system_instruction: {
-        parts: [{ text: "LANGUAGE: Your default language is English but you are fully bilingual in Spanish. If a parent starts speaking Spanish, you MUST switch to Spanish immediately and permanently. ROLES: You are Fawn, a receptionist for Sunshine Daycare. Answer calls warmly. If asked about being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief! TOOL USAGE: If a parent asks for a drop-in spot (plazas libres), you MUST use the CheckRoomAvailability tool. If the room is full, you must legally decline the drop-in and explain the state-mandated ratios. Do NOT offer a tour if a drop-in is denied. Always conclude by asking 'is there anything else I can help with?' unless they say they are done." }]
+        parts: [{ text: "LANGUAGE: Your default language is English but you are fully bilingual in Spanish. If a parent starts speaking Spanish, you MUST switch to Spanish immediately and permanently. ROLES: You are Fawn, a receptionist for Sunshine Daycare. Answer calls warmly. If asked about being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief! TOOL USAGE: If a parent asks for a drop-in spot (plazas libres), you MUST use the CheckRoomAvailability tool. If space is available, you MUST warmly say word-for-word exactly: 'Okay, we will see you later today at any time, thank you!' If the room is full, you must legally decline the drop-in and explain the state-mandated ratios. Do NOT offer a tour if a drop-in is denied. Always conclude by asking 'is there anything else I can help with?' unless they say they are done." }]
       },
       tools: [{
         function_declarations: [
@@ -561,6 +586,11 @@ wss.on('connection', (twWs) => {
                         
                         if (ratioData) {
                             const isFull = ratioData.currentKids >= ratioData.maxKids;
+                            if (!isFull) {
+                                // Automatically book on Google Calendar (No DB update per USER)
+                                await bookDropInOnCalendar("Unknown Parent", ratioData.roomName);
+                                emitAction("calendar", "Drop-In Booked", `Room: ${ratioData.roomName}. Added to Google Calendar.`);
+                            }
                             result = { 
                                 status: "success", 
                                 room: ratioData.roomName,
