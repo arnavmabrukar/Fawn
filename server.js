@@ -4,10 +4,23 @@ const WebSocket = require('ws');
 const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 const { google } = require('googleapis');
+const { GoogleGenAI } = require('@google/genai');
+const { connectDB, Lead, Call, ToyFeedback, RoomRatio } = require('./db');
+
+
+// Initialize MongoDB
+connectDB();
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Allow the Next.js frontend (port 3000) to call our API (port 8080)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
 
 const PORT = process.env.PORT || 8080;
 
@@ -36,8 +49,63 @@ const googleAuth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 
+// Initialize Gemini for Document Content Generation
+const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+async function generateLeadDocumentData(parentName, childName, age, medicalNotes) {
+  try {
+    const prompt = `
+      You are a daycare safety and care expert. Generate personalized content for a new student intake document.
+      
+      Child Name: ${childName}
+      Age: ${age} years old
+      Known Medical/Allergy Notes: ${medicalNotes || 'None'}
+      
+      Please provide exactly two sections in plain text:
+      1. "AGE_CARE": A short 2-3 sentence paragraph about specific care needs for a ${age}-year-old (e.g., focus on motor skills, potty training, or social play).
+      2. "HIDDEN_ALLERGENS": If the notes mention a food allergy (like peanuts, dairy, etc.), list 3-4 surprising or "hidden" foods that might contain that ingredient. If no allergy is mentioned, write "No specific food restrictions identified. Standard healthy daycare menu applies."
+      
+      Format your response as:
+      AGE_CARE: [content here]
+      HIDDEN_ALLERGENS: [content here]
+    `;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    const ageCare = text.match(/AGE_CARE:\s*(.*)/)?.[1] || "Standard age-appropriate care applied.";
+    const hiddenAllergens = text.match(/HIDDEN_ALLERGENS:\s*(.*)/s)?.[1] || "No specific restrictions.";
+
+    // Emit the document data via Pusher
+    pusher.trigger('fawn-live', 'lead-document', {
+      parentName,
+      childName,
+      age,
+      medicalNotes: medicalNotes || 'None',
+      ageCare: ageCare.trim(),
+      hiddenAllergens: hiddenAllergens.trim(),
+      timestamp: new Date().toISOString()
+    }).catch(err => console.error('[Pusher lead-document error]', err));
+
+  } catch (err) {
+    console.error('[Gemini Doc Gen Error]', err);
+  }
+}
+
 async function appendLeadToSheet(name, childName, age, notes = "") {
   try {
+    // 1. Save to MongoDB (Permanent Brain)
+    const newLead = new Lead({
+      parentName: name,
+      childName,
+      childAge: parseInt(age) || 0,
+      medicalNotes: notes
+    });
+    await newLead.save();
+    console.log(`[MongoDB] Lead saved for ${childName}`);
+
+    // 2. Append to Google Sheets (Shared View)
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
     const range = 'Sheet1!A:E';
     const values = [[
@@ -55,7 +123,7 @@ async function appendLeadToSheet(name, childName, age, notes = "") {
     });
     console.log(`[Google Sheets] Lead added for ${childName}`);
   } catch (err) {
-    console.error('[Google Sheets Error]', err.message);
+    console.error('[DB/Sheets Error]', err.message);
   }
 }
 
@@ -81,6 +149,29 @@ async function bookTourOnCalendar(name, dateTime) {
   } catch (err) {
     console.error('[Google Calendar Error]', err.message);
   }
+}
+
+async function bookDropInOnCalendar(name, roomName) {
+    try {
+        const soon = new Date(Date.now() + 60 * 60000); // 1 hour from now
+        const event = {
+            summary: `Drop-In: ${roomName} Room`,
+            description: `Automatic drop-in expected via Fawn AI for parent: ${name || 'Unknown'}`,
+            start: {
+                dateTime: soon.toISOString(),
+            },
+            end: {
+                dateTime: new Date(soon.getTime() + 30 * 60000).toISOString(),
+            },
+        };
+        await calendar.events.insert({
+            calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+            resource: event,
+        });
+        console.log(`[Google Calendar] Drop-In booked for ${roomName} room at ${soon.toISOString()}`);
+    } catch (err) {
+        console.error('[Google Calendar Error Drop-In]', err.message);
+    }
 }
 
 function emitAction(type, title, description, extra = {}) {
@@ -152,6 +243,152 @@ app.post('/api/feed/action', (req, res) => {
   return res.json({ ok: true });
 });
 
+app.get('/api/history', async (req, res) => {
+  try {
+    const historicalLeads = await Lead.find().sort({ createdAt: -1 }).limit(10);
+    const historicalCalls = await Call.find().sort({ startTime: -1 }).limit(10);
+    
+    // Transform into frontend format
+    const leads = historicalLeads.map(l => ({
+      id: l._id,
+      parentName: l.parentName,
+      childName: l.childName,
+      age: l.childAge,
+      medicalNotes: l.medicalNotes,
+      status: l.status,
+      timestamp: l.createdAt
+    }));
+
+    const calls = historicalCalls.map(c => ({
+      id: c._id,
+      timestamp: c.startTime,
+      duration: c.duration || 0,
+      status: c.status
+    }));
+
+    res.json({ leads, calls });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/toys', async (req, res) => {
+  try {
+    const toys = await ToyFeedback.find().sort({ weekOf: -1 }).limit(20);
+    const formatted = toys.map(t => ({
+      id: t._id,
+      toy: t.toy,
+      emoji: t.emoji,
+      teacher: t.teacher,
+      rating: t.rating,
+      quote: t.quote,
+      date: t.weekOf ? t.weekOf.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Unknown',
+      tags: t.tags
+    }));
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/swarm', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const sendEvent = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const records = await ToyFeedback.find().limit(20);
+    const dataStr = JSON.stringify(records.map(r => ({ toy: r.toy, rating: r.rating, quote: r.quote, tags: r.tags })));
+
+    let ai;
+    try {
+        ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    } catch(e) {
+        // Fallback or error if not available
+        sendEvent('error', { message: 'Failed to initialize Gemini SDK.' });
+        res.end();
+        return;
+    }
+
+    const agentConfigs = [
+      { id: 'safety', instruction: 'Analyze the following toy feedback for safety and age appropriateness. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your safety checks.' },
+      { id: 'engagement', instruction: 'Rank the toys based on engagement and enthusiasm. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your thoughts.' },
+      { id: 'budget', instruction: 'Analyze the budget and inventory implications. Assumed budget is $200. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your thoughts.' },
+      { id: 'dev', instruction: 'Map the toys to developmental milestones. Output exactly 4 short bullet points (1 per line, starting with a dash) summarizing your developmental analysis.' }
+    ];
+
+    sendEvent('status', { message: 'Swarm initialized. Triggering parallel processing.' });
+
+    // Run 4 agents in parallel
+    const results = await Promise.all(agentConfigs.map(async (agent) => {
+      sendEvent('agent_start', { id: agent.id });
+      
+      let responseText = "";
+      try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Toy Data:\n${dataStr}\n\nInstruction: ${agent.instruction}`,
+        });
+        responseText = response.text || "";
+      } catch (err) {
+        responseText = "- Error calling agent API.\n- Skipping analysis for this agent.";
+      }
+
+      const lines = responseText.split('\n').filter(l => l.trim().length > 0);
+      lines.forEach((line, i) => {
+        sendEvent('agent_message', { id: agent.id, index: i, text: line.replace(/^-/, '').trim() });
+      });
+
+      sendEvent('agent_done', { id: agent.id });
+      return { id: agent.id, output: responseText };
+    }));
+
+    // Consensus Agent
+    sendEvent('agent_start', { id: 'consensus' });
+    const consensusPrompt = `You are the Arbiter. Here are the thoughts from your 4 sub-agents:
+${JSON.stringify(results)}
+
+Based on this, pick the Top 3 toys for next week.
+Format your output exactly as a JSON array of objects with the following keys: "toy" (string), "emoji" (string), "reason" (short string), "score" (number out of 100). Do NOT use markdown code blocks, just pure JSON array starting with [ and ending with ].`;
+
+    let consensusResponseText = "[]";
+    try {
+        const consensusResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: consensusPrompt
+        });
+        consensusResponseText = consensusResponse.text || "[]";
+    } catch (err) {
+        console.error("Consensus Error", err);
+    }
+    
+    sendEvent('agent_message', { id: 'consensus', index: 0, text: 'Aggregating signals from 4 parallel agents...' });
+    sendEvent('agent_message', { id: 'consensus', index: 1, text: 'Analyzing vote weights and scoring metrics...' });
+    sendEvent('agent_message', { id: 'consensus', index: 2, text: '🏆 Consensus reached. Final toy lineup confirmed.' });
+
+    let finalJson;
+    try {
+      let cleaned = consensusResponseText.trim();
+      if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/```json/gi, '').replace(/```/g, '').trim();
+      finalJson = JSON.parse(cleaned);
+    } catch (e) {
+      finalJson = [ { toy: "Parse Error", emoji: "❌", reason: "Failed to parse final selection.", score: 0 } ];
+    }
+
+    sendEvent('agent_done', { id: 'consensus' });
+    sendEvent('result', finalJson);
+    res.end();
+  } catch (err) {
+    sendEvent('error', { message: err.message });
+    res.end();
+  }
+});
+
 app.post('/api/check-in', (req, res) => {
   const { childName, checkedInAt, notes } = req.body || {};
 
@@ -174,6 +411,7 @@ const wss = new WebSocket.Server({ server, path: '/api/media' });
 wss.on('connection', (twWs) => {
   console.log('[Twilio] Connected');
   let streamSid = null;
+  let isSetupComplete = false;
   
   if (!process.env.GEMINI_API_KEY) {
       console.error("[Config Error] GEMINI_API_KEY is missing in .env");
@@ -199,25 +437,36 @@ wss.on('connection', (twWs) => {
         }
       },
       system_instruction: {
-        parts: [{ text: "You are Fawn, an AI receptionist for Sunshine Daycare. You must answer calls, help parents book tours, and generate intake forms. If a parent asks why they are talking to a robot, warmly explain that you handle the phones so the teachers can focus 100% of their attention on taking care of the kids! Also explain that being an AI allows you to instantly log information, book tours, and eventually automate messages to parents so nothing ever gets missed. Keep responses extremely brief and conversational! Ask one question at a time. Use tools when appropriate." }]
+        parts: [{ text: "LANGUAGE: Your default language is English but you are fully bilingual in Spanish. If a parent starts speaking Spanish, you MUST switch to Spanish immediately and permanently. ROLES: You are Fawn, a receptionist for Sunshine Daycare. Answer calls warmly. If asked about being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief! TOOL USAGE: If a parent asks for a drop-in spot (plazas libres), you MUST use the CheckRoomAvailability tool. If space is available, you MUST warmly say word-for-word exactly: 'Okay, we will see you later today at any time, thank you!' If the room is full, you must legally decline the drop-in and explain the state-mandated ratios. Do NOT offer a tour if a drop-in is denied. Always conclude by asking 'is there anything else I can help with?' unless they say they are done." }]
       },
       tools: [{
         function_declarations: [
           {
             name: "BookCalendar",
-            description: "Books a daycare tour on the calendar.",
+            description: "Books a daycare tour.",
             parameters: {
               type: "OBJECT",
               properties: {
-                date_time: { type: "STRING", description: "The date and time of the tour" },
-                name: { type: "STRING", description: "Parent's name" }
+                date_time: { type: "STRING" },
+                name: { type: "STRING" }
               },
               required: ["date_time", "name"]
             }
           },
           {
+            name: "CheckRoomAvailability",
+            description: "Checks the live MongoDB database for the exact capacity of a daycare room to determine if a drop-in can be legally accepted.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                room_name: { type: "STRING", description: "The name of the room to check. Must be 'Infants', 'Toddlers', or 'Pre-K'" }
+              },
+              required: ["room_name"]
+            }
+          },
+          {
             name: "GenerateDoc",
-            description: "Generates an intake form document for a child.",
+            description: "Generates an intake form.",
             parameters: {
               type: "OBJECT",
               properties: {
@@ -236,6 +485,7 @@ wss.on('connection', (twWs) => {
   gemWs.on('open', () => {
     console.log('[Gemini] WebSocket OPEN - Sending Setup Message...');
     gemWs.send(JSON.stringify(setupMsg));
+    console.log('[Gemini] Setup Payload Sent! Model:', setupMsg.setup.model);
   });
 
   gemWs.on('close', (code, reason) => {
@@ -256,6 +506,7 @@ wss.on('connection', (twWs) => {
     }
     
     if (msg.setupComplete) {
+        isSetupComplete = true;
         console.log('[Gemini] Setup Complete! Fawn is ready.');
         // Ask Gemini to greet the user
         gemWs.send(JSON.stringify({
@@ -347,36 +598,89 @@ wss.on('connection', (twWs) => {
         }
         
     } else if (msg.toolCall) {
-        msg.toolCall.functionCalls.forEach(async (call) => {
-            console.log(`[Gemini ToolCall] ${call.name}`, call.args);
-            
-            if (call.name === "BookCalendar") {
-                emitAction("calendar", "Tour Booked", `Parent: ${call.args.name}, Time: ${call.args.date_time}`);
-                // Actively book on Google Calendar
-                await bookTourOnCalendar(call.args.name, call.args.date_time);
-            } else if (call.name === "GenerateDoc") {
-                emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name}, Age: ${call.args.age}. Med: ${call.args.medical_notes || 'None'}`);
-                // Instead of a doc, we append to our "Leads/Intake" sheet
-                await appendLeadToSheet(
-                    call.args.parent_name || "New Parent", 
-                    call.args.child_name, 
-                    call.args.age, 
-                    call.args.medical_notes
-                );
-            }
+        const executeTools = async () => {
+            for (const call of msg.toolCall.functionCalls) {
+                console.log(`[Gemini ToolCall] ${call.name}`, call.args);
+                
+                let result = { result: "success" };
 
-            // Respond back to Gemini WS so she keeps talking
-            const response = {
-                toolResponse: {
-                    functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { result: "success" }
-                    }]
+                if (call.name === "BookCalendar") {
+                    emitAction("calendar", "Tour Booked", `Parent: ${call.args.name}, Time: ${call.args.date_time}`);
+                    await bookTourOnCalendar(call.args.name, call.args.date_time);
+                } else if (call.name === "GenerateDoc") {
+                    emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name}, Age: ${call.args.age}. Med: ${call.args.medical_notes || 'None'}`);
+                    
+                    // 1. Traditional Storage (Sheets/DB)
+                    appendLeadToSheet(
+                        call.args.parent_name || "New Parent", 
+                        call.args.child_name, 
+                        call.args.age, 
+                        call.args.medical_notes
+                    );
+
+                    // 2. AI Document Preview Generation (New)
+                    generateLeadDocumentData(
+                        call.args.parent_name || "New Parent",
+                        call.args.child_name,
+                        call.args.age,
+                        call.args.medical_notes
+                    );
+                } else if (call.name === "CheckRoomAvailability") {
+                    const safeName = call.args.room_name || "Unknown";
+                    emitAction("calendar", "Checking Room Ratios", `Querying MongoDB for ${safeName} room.`);
+                    
+                    try {
+                        const allRatios = await RoomRatio.find({});
+                        const ratioData = allRatios.find(r => 
+                            r.roomName.toLowerCase().includes(safeName.toLowerCase().replace(/s$/i, '')) ||
+                            safeName.toLowerCase().includes(r.roomName.toLowerCase().replace(/s$/i, ''))
+                        );
+                        
+                        if (ratioData) {
+                            const isFull = ratioData.currentKids >= ratioData.maxKids;
+                            if (!isFull) {
+                                // Automatically book on Google Calendar (No DB update per USER)
+                                // Run async so we don't block the real-time AI response!
+                                bookDropInOnCalendar("Unknown Parent", ratioData.roomName);
+                                emitAction("calendar", "Drop-In Booked", `Room: ${ratioData.roomName}. Added to Google Calendar.`);
+                            }
+                            result = { 
+                                status: "success", 
+                                room: ratioData.roomName,
+                                current_occupancy: ratioData.currentKids,
+                                max_capacity: ratioData.maxKids,
+                                is_full_legal_limit: isFull,
+                                ratio: ratioData.ratioLimit
+                            };
+                        } else {
+                            const available = allRatios.map(r => r.roomName);
+                            result = { 
+                                status: "not_found", 
+                                requested_room: safeName,
+                                valid_rooms: available
+                            };
+                        }
+                    } catch (dbErr) {
+                        console.error('[DB Error CheckRoomAvailability]', dbErr);
+                        result = { result: "error", error: "Database lookup failed." };
+                    }
                 }
-            };
-            gemWs.send(JSON.stringify(response));
-        });
+
+                // Send standardized snake_case tool response
+                const toolResponse = {
+                    tool_response: {
+                        function_responses: [{
+                            id: call.id,
+                            name: call.name,
+                            response: result
+                        }]
+                    }
+                };
+                gemWs.send(JSON.stringify(toolResponse));
+                console.log(`[Gemini ToolResponse] Sent for ${call.name}`);
+            }
+        };
+        executeTools();
     }
   });
 
@@ -388,38 +692,59 @@ twWs.on('message', (message) => {
       streamSid = msg.start.streamSid;
       console.log(`[Twilio] Stream Started: ${streamSid}`);
       emitCallStart();
+      
+      // Log Call to MongoDB
+      const newCall = new Call({ streamSid, startTime: new Date() });
+      newCall.save().catch(err => console.error('[MongoDB] Call Start Log Error:', err.message));
     } else if (msg.event === 'media') {
-      // Decode 8kHz mu-law coming from Twilio -> 16kHz PCM for Gemini
-      if (gemWs.readyState === WebSocket.OPEN) {
-          const mBuffer = Buffer.from(msg.media.payload, 'base64');
-          
-          let wav = new WaveFile();
-          wav.fromScratch(1, 8000, '8m', mBuffer);
-          wav.fromMuLaw();
-          wav.toSampleRate(16000);
-          
-          const pcmHeaderless = Buffer.from(wav.data.samples);
-          const pcmBase64 = pcmHeaderless.toString('base64');
-          
-          const request = {
-            realtimeInput: {
-              mediaChunks: [{
-                mimeType: "audio/pcm;rate=16000",
-                data: pcmBase64
-              }]
-            }
-          };
-          gemWs.send(JSON.stringify(request));
-      }
+          // Decode 8kHz mu-law coming from Twilio -> 16kHz PCM for Gemini
+          if (gemWs.readyState === WebSocket.OPEN && isSetupComplete) {
+              const mBuffer = Buffer.from(msg.media.payload, 'base64');
+              
+              let wav = new WaveFile();
+              wav.fromScratch(1, 8000, '8m', mBuffer);
+              wav.fromMuLaw();
+              wav.toSampleRate(16000);
+              
+              const pcmHeaderless = Buffer.from(wav.data.samples);
+              const pcmBase64 = pcmHeaderless.toString('base64');
+              
+              const request = {
+                realtimeInput: {
+                  mediaChunks: [{
+                    mimeType: "audio/pcm;rate=16000",
+                    data: pcmBase64
+                  }]
+                }
+              };
+              gemWs.send(JSON.stringify(request));
+          }
     } else if (msg.event === 'stop') {
       console.log('[Twilio] Stream Stopped');
       gemWs.close();
     }
   });
 
-  twWs.on('close', () => {
+  twWs.on('close', async () => {
     console.log('[Twilio] Connection Closed');
     emitCallEnd();
+    
+    // Update Call record in MongoDB
+    if (streamSid) {
+      try {
+        const endTime = new Date();
+        const callRecord = await Call.findOne({ streamSid }).sort({ startTime: -1 });
+        if (callRecord) {
+          callRecord.endTime = endTime;
+          callRecord.duration = Math.floor((endTime - callRecord.startTime) / 1000);
+          await callRecord.save();
+          console.log(`[MongoDB] Call record updated. Duration: ${callRecord.duration}s`);
+        }
+      } catch (err) {
+        console.error('[MongoDB] Call End Update Error:', err.message);
+      }
+    }
+
     if (gemWs.readyState === WebSocket.OPEN) gemWs.close();
   });
 });

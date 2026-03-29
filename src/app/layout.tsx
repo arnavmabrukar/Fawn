@@ -16,6 +16,11 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "Fawn AI",
   description: "Live daycare operations dashboards for staff and families.",
+  icons: {
+    icon: "/fawn-deer.svg",
+    shortcut: "/fawn-deer.svg",
+    apple: "/fawn-deer.svg",
+  },
 };
 
 export default function RootLayout({
