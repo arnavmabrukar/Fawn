@@ -5,7 +5,7 @@ const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 const { google } = require('googleapis');
 const { GoogleGenAI } = require('@google/genai');
-const { connectDB, Lead, Call, ToyFeedback } = require('./db');
+const { connectDB, Lead, Call, ToyFeedback, RoomRatio } = require('./db');
 
 
 // Initialize MongoDB
@@ -370,7 +370,7 @@ wss.on('connection', (twWs) => {
         }
       },
       system_instruction: {
-        parts: [{ text: "You are Fawn, an AI receptionist for Sunshine Daycare. You must answer calls warmly and help parents. If they ask about you being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief!" }]
+        parts: [{ text: "You are Fawn, an AI receptionist for Sunshine Daycare. You must answer calls warmly and help parents. If they ask about you being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief! IMPORTANT: If a parent asks for a drop-in spot or to place their child today, you MUST use the CheckRoomAvailability tool to check the live capacity of the 'Infants', 'Toddlers', or 'Pre-K' room based on their age. If adding the child exceeds the maxKids, you MUST legally decline the drop-in." }]
       },
       tools: [{
         function_declarations: [
@@ -384,6 +384,17 @@ wss.on('connection', (twWs) => {
                 name: { type: "STRING" }
               },
               required: ["date_time", "name"]
+            }
+          },
+          {
+            name: "CheckRoomAvailability",
+            description: "Checks the live MongoDB database for the exact capacity of a daycare room to determine if a drop-in can be legally accepted.",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                room_name: { type: "STRING", description: "The name of the room to check. Must be 'Infants', 'Toddlers', or 'Pre-K'" }
+              },
+              required: ["room_name"]
             }
           },
           {
@@ -536,9 +547,46 @@ wss.on('connection', (twWs) => {
                     call.args.age, 
                     call.args.medical_notes
                 );
+            } else if (call.name === "CheckRoomAvailability") {
+                const room_name = call.args.room_name;
+                emitAction("calendar", "Checking Room Ratios", `Checking live MongoDB capacity for ${room_name} room.`);
+                
+                try {
+                    const ratioData = await RoomRatio.findOne({ roomName: room_name });
+                    if (ratioData) {
+                        const isFull = ratioData.currentKids >= ratioData.maxKids;
+                        const responseString = `The ${room_name} room currently has ${ratioData.currentKids} children out of a maximum allowed capacity of ${ratioData.maxKids} children. The legal ratio is ${ratioData.ratioLimit}. ${isFull ? "The room is AT MAXIMUM LEGAL CAPACITY. You MUST deny the drop-in." : "There is space available. You may accept the drop-in."}`;
+                        
+                        const toolResp = {
+                            toolResponse: {
+                                functionResponses: [{
+                                    id: call.id,
+                                    name: call.name,
+                                    response: { result: "success", info: responseString }
+                                }]
+                            }
+                        };
+                        gemWs.send(JSON.stringify(toolResp));
+                        console.log(`[Gemini ToolResponse] Sent:`, responseString);
+                    } else {
+                        const toolResp = {
+                            toolResponse: {
+                                functionResponses: [{
+                                    id: call.id,
+                                    name: call.name,
+                                    response: { result: "error", error: `Room ${room_name} not found in database.` }
+                                }]
+                            }
+                        };
+                        gemWs.send(JSON.stringify(toolResp));
+                    }
+                } catch (dbErr) {
+                    console.error('[DB Error CheckRoomAvailability]', dbErr);
+                }
+                return; // Prevent the generic tool response below from sending twice
             }
 
-            // Respond back to Gemini WS so she keeps talking
+            // Respond back to Gemini WS so she keeps talking for BookCalendar and GenerateDoc
             const response = {
                 toolResponse: {
                     functionResponses: [{

@@ -33,6 +33,15 @@ const toyFeedbackSchema = new mongoose.Schema({
 
 const ToyFeedback = mongoose.model('ToyFeedback', toyFeedbackSchema);
 
+const roomRatioSchema = new mongoose.Schema({
+  roomName: { type: String, required: true }, // e.g. "Infants", "Toddlers", "Pre-K"
+  currentKids: { type: Number, default: 0 },
+  maxKids: { type: Number, required: true },
+  ratioLimit: { type: String, required: true }, // e.g. "1:4"
+});
+
+const RoomRatio = mongoose.model('RoomRatio', roomRatioSchema);
+
 
 const connectDB = async () => {
   try {
@@ -48,4 +57,4 @@ const connectDB = async () => {
   }
 };
 
-module.exports = { connectDB, Lead, Call, ToyFeedback };
+module.exports = { connectDB, Lead, Call, ToyFeedback, RoomRatio };
