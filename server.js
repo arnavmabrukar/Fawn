@@ -115,11 +115,9 @@ async function bookDropInOnCalendar(name, roomName) {
             description: `Automatic drop-in expected via Fawn AI for parent: ${name || 'Unknown'}`,
             start: {
                 dateTime: soon.toISOString(),
-                timeZone: 'UTC',
             },
             end: {
                 dateTime: new Date(soon.getTime() + 30 * 60000).toISOString(),
-                timeZone: 'UTC',
             },
         };
         await calendar.events.insert({
@@ -588,7 +586,8 @@ wss.on('connection', (twWs) => {
                             const isFull = ratioData.currentKids >= ratioData.maxKids;
                             if (!isFull) {
                                 // Automatically book on Google Calendar (No DB update per USER)
-                                await bookDropInOnCalendar("Unknown Parent", ratioData.roomName);
+                                // Run async so we don't block the real-time AI response!
+                                bookDropInOnCalendar("Unknown Parent", ratioData.roomName);
                                 emitAction("calendar", "Drop-In Booked", `Room: ${ratioData.roomName}. Added to Google Calendar.`);
                             }
                             result = { 
