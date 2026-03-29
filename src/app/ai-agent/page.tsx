@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sparkles, Star, User, Brain, ShieldCheck, TrendingUp, DollarSign, CheckCircle2, Clock, ArrowLeft } from "lucide-react";
+import { Sparkles, Star, User, Brain, ShieldCheck, TrendingUp, DollarSign, CheckCircle2, Clock, ArrowLeft, Database } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -173,14 +173,20 @@ export default function AIAgentPage() {
   const [swarmResults, setSwarmResults] = useState<SwarmResult[]>([]);
   const [activeIds, setActiveIds] = useState<string[]>([]);
   const [doneIds, setDoneIds] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    setIsLoading(true);
     fetch('http://localhost:8080/api/toys')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setToyRecords(data);
+        setIsLoading(false);
       })
-      .catch(err => console.error("Failed to fetch toys:", err));
+      .catch(err => {
+        console.error("Failed to fetch toys:", err);
+        setIsLoading(false);
+      });
   }, []);
 
   const runSwarm = () => {
@@ -289,7 +295,13 @@ export default function AIAgentPage() {
                 }`}
               >
                 <Sparkles size={16} />
-                 {toyRecords.length === 0 ? "Loading DB..." : swarmState === "running" ? "Agents Analyzing..." : "Run Gemini Swarm"}
+                 {isLoading 
+                    ? "Loading DB..." 
+                    : toyRecords.length === 0 
+                      ? "Seeding Needed" 
+                      : swarmState === "running" 
+                        ? "Agents Analyzing..." 
+                        : "Run Gemini Swarm"}
               </button>
             </div>
           </div>
@@ -308,10 +320,16 @@ export default function AIAgentPage() {
             </div>
 
             <div className="space-y-3">
-              {toyRecords.length === 0 ? (
+              {isLoading ? (
                 <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center text-gray-400">
-                  <Clock className="mx-auto mb-2 opacity-50" size={24} />
+                  <Clock className="mx-auto mb-2 animate-spin opacity-50" size={24} />
                   Loading toy feedback from MongoDB...
+                </div>
+              ) : toyRecords.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center text-gray-400">
+                  <Database className="mx-auto mb-3 opacity-30" size={32} />
+                  <p className="font-bold text-gray-500 mb-1">Database is Empty</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold">Run `node seed-toys.js` to begindemo</p>
                 </div>
               ) : (
                 toyRecords.map((record) => (

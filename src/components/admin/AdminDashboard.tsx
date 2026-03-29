@@ -8,7 +8,7 @@ import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
 import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
 import { HistoryModal } from '@/components/dashboard/HistoryModal';
 import { IntakeSummaryModal } from '@/components/dashboard/IntakeSummaryModal';
-import { Trash2, Play, ExternalLink, Sparkles, Database } from 'lucide-react';
+import { Trash2, Play, ExternalLink, Sparkles, Database, RefreshCw } from 'lucide-react';
 import {
   ActionEntry,
   AUDIT_LOG_STORAGE_KEY,
@@ -28,6 +28,7 @@ export function AdminDashboard() {
   const [fawnMessage, setFawnMessage] = useState<string>('');
   const [leads, setLeads] = useState(12);
   const [calls, setCalls] = useState(45);
+  const [calendarKey, setCalendarKey] = useState(0);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [dbLeads, setDbLeads] = useState<any[]>([]);
   const [dbCalls, setDbCalls] = useState<any[]>([]);
@@ -307,13 +308,23 @@ export function AdminDashboard() {
         />
 
         <div className="flex h-full flex-col rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="mb-5">
-            <h2 className="text-xl font-bold text-gray-800">Tour Calendar</h2>
-            <p className="text-sm text-gray-500">Shared Google Calendar for scheduled tours and availability.</p>
+          <div className="mb-5 flex items-start justify-between">
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold text-gray-800">Tour Calendar</h2>
+              <p className="text-sm text-gray-500">Shared Google Calendar for scheduled tours and availability.</p>
+            </div>
+            <button 
+              onClick={() => setCalendarKey(prev => prev + 1)}
+              className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-all duration-200 group"
+              title="Refresh Calendar"
+            >
+              <RefreshCw size={18} className="group-active:rotate-180 transition-transform duration-500" />
+            </button>
           </div>
 
           <div className="flex-1 overflow-hidden rounded-3xl border border-gray-100 bg-gray-50">
             <iframe
+              key={calendarKey}
               src="https://calendar.google.com/calendar/embed?src=96c2d905f9f8680926a24f1fc5d32d65acc1a67e9da6729c8e1d6ba8bcc689f5%40group.calendar.google.com&ctz=America%2FNew_York&mode=WEEK"
               title="Fawn Google Calendar"
               className="h-[460px] w-full border-0 md:h-[520px]"

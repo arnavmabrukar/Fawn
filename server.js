@@ -51,7 +51,7 @@ const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 
 // Initialize Gemini for Document Content Generation
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }, { apiVersion: 'v1' });
 
 async function generateLeadDocumentData(parentName, childName, age, medicalNotes) {
   const safeParent = parentName || 'Guardian';
@@ -360,7 +360,7 @@ app.get('/api/swarm', async (req, res) => {
       
       let responseText = "";
       try {
-        const agentModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const agentModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash-latest' }, { apiVersion: 'v1' });
         const result = await agentModel.generateContent(`Toy Data:\n${dataStr}\n\nInstruction: ${agent.instruction}`);
         responseText = result.response.text();
       } catch (err) {
@@ -387,7 +387,7 @@ Format your output exactly as a JSON array of objects with the following keys: "
 
     let consensusResponseText = "[]";
     try {
-        const consensusModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const consensusModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash-latest' }, { apiVersion: 'v1' });
         const consensusResult = await consensusModel.generateContent(consensusPrompt);
         consensusResponseText = consensusResult.response.text();
     } catch (err) {
@@ -401,10 +401,24 @@ Format your output exactly as a JSON array of objects with the following keys: "
     let finalJson;
     try {
       let cleaned = consensusResponseText.trim();
-      if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/```json/gi, '').replace(/```/g, '').trim();
+      // Remove thought blocks if present
+      cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+      // Remove markdown code blocks
+      if (cleaned.includes('```')) {
+        cleaned = cleaned.split('```')[1].replace(/^(json|array)/i, '').trim();
+      }
+      // If result is still not a clean array, try to find the first [ and last ]
+      if (!cleaned.startsWith('[')) {
+        const startIdx = cleaned.indexOf('[');
+        const endIdx = cleaned.lastIndexOf(']');
+        if (startIdx > -1 && endIdx > startIdx) {
+          cleaned = cleaned.substring(startIdx, endIdx + 1);
+        }
+      }
       finalJson = JSON.parse(cleaned);
     } catch (e) {
-      finalJson = [ { toy: "Parse Error", emoji: "❌", reason: "Failed to parse final selection.", score: 0 } ];
+      console.error('[Consensus Parse Error]', e.message, 'Raw:', consensusResponseText);
+      finalJson = [ { toy: "Parse Error", emoji: "❌", reason: "Failed to extract final recommendations.", score: 0 } ];
     }
 
     sendEvent('agent_done', { id: 'consensus' });
