@@ -552,10 +552,14 @@ wss.on('connection', (twWs) => {
                 emitAction("calendar", "Checking Room Ratios", `Checking live MongoDB capacity for ${room_name} room.`);
                 
                 try {
-                    const ratioData = await RoomRatio.findOne({ roomName: room_name });
+                    // Use a case-insensitive regex and strip trailing 's' to safely match 'toddler' against 'Toddlers'
+                    const strippedName = room_name.replace(/s$/i, '');
+                    const searchRegex = new RegExp(`^${strippedName}`, 'i');
+                    const ratioData = await RoomRatio.findOne({ roomName: { $regex: searchRegex } });
+                    
                     if (ratioData) {
                         const isFull = ratioData.currentKids >= ratioData.maxKids;
-                        const responseString = `The ${room_name} room currently has ${ratioData.currentKids} children out of a maximum allowed capacity of ${ratioData.maxKids} children. The legal ratio is ${ratioData.ratioLimit}. ${isFull ? "The room is AT MAXIMUM LEGAL CAPACITY. You MUST deny the drop-in." : "There is space available. You may accept the drop-in."}`;
+                        const responseString = `The ${ratioData.roomName} room currently has ${ratioData.currentKids} children out of a maximum allowed capacity of ${ratioData.maxKids} children. The legal ratio is ${ratioData.ratioLimit}. ${isFull ? "The room is AT MAXIMUM LEGAL CAPACITY. You MUST deny the drop-in." : "There is space available. You may accept the drop-in."}`;
                         
                         const toolResp = {
                             toolResponse: {
@@ -579,6 +583,7 @@ wss.on('connection', (twWs) => {
                             }
                         };
                         gemWs.send(JSON.stringify(toolResp));
+                        console.log(`[Gemini ToolResponse] Error: Room ${room_name} not found.`);
                     }
                 } catch (dbErr) {
                     console.error('[DB Error CheckRoomAvailability]', dbErr);
