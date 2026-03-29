@@ -552,16 +552,17 @@ wss.on('connection', (twWs) => {
                 emitAction("calendar", "Checking Room Ratios", `Checking live MongoDB capacity for ${room_name} room.`);
                 
                 try {
-                    // Use a case-insensitive regex and strip trailing 's' to safely match 'toddler' against 'Toddlers'
-                    const strippedName = room_name.replace(/s$/i, '');
-                    const searchRegex = new RegExp(`^${strippedName}`, 'i');
+                    const safeName = call.args.room_name || "Unknown";
+                    // Use a case-insensitive regex and strip trailing 's'
+                    const strippedName = safeName.replace(/s$/i, '');
+                    const searchRegex = new RegExp(`^${strippedName || 'xyz123'}`, 'i');
                     const ratioData = await RoomRatio.findOne({ roomName: { $regex: searchRegex } });
                     
                     if (ratioData) {
                         const isFull = ratioData.currentKids >= ratioData.maxKids;
                         const responseString = `The ${ratioData.roomName} room currently has ${ratioData.currentKids} children out of a maximum allowed capacity of ${ratioData.maxKids} children. The legal ratio is ${ratioData.ratioLimit}. ${isFull ? "The room is AT MAXIMUM LEGAL CAPACITY. You MUST deny the drop-in." : "There is space available. You may accept the drop-in."}`;
                         
-                        const toolResp = {
+                        gemWs.send(JSON.stringify({
                             toolResponse: {
                                 functionResponses: [{
                                     id: call.id,
@@ -569,24 +570,31 @@ wss.on('connection', (twWs) => {
                                     response: { result: "success", info: responseString }
                                 }]
                             }
-                        };
-                        gemWs.send(JSON.stringify(toolResp));
+                        }));
                         console.log(`[Gemini ToolResponse] Sent:`, responseString);
                     } else {
-                        const toolResp = {
+                        gemWs.send(JSON.stringify({
                             toolResponse: {
                                 functionResponses: [{
                                     id: call.id,
                                     name: call.name,
-                                    response: { result: "error", error: `Room ${room_name} not found in database.` }
+                                    response: { result: "error", error: `Room ${safeName} not found in database.` }
                                 }]
                             }
-                        };
-                        gemWs.send(JSON.stringify(toolResp));
-                        console.log(`[Gemini ToolResponse] Error: Room ${room_name} not found.`);
+                        }));
+                        console.log(`[Gemini ToolResponse] Error: Room ${safeName} not found.`);
                     }
                 } catch (dbErr) {
                     console.error('[DB Error CheckRoomAvailability]', dbErr);
+                    gemWs.send(JSON.stringify({
+                        toolResponse: {
+                            functionResponses: [{
+                                id: call.id,
+                                name: call.name,
+                                response: { result: "error", error: "Internal server error while checking database." }
+                            }]
+                        }
+                    }));
                 }
                 return; // Prevent the generic tool response below from sending twice
             }
