@@ -23,17 +23,17 @@ interface LeadDocProps {
 export function DigitalIntakeDoc({ data, compact = false }: LeadDocProps) {
   const [isExporting, setIsExporting] = useState(false);
   const hasData = Boolean(data);
-  const intakeIdLabel = data ? `ID: ${data.timestamp.split('T')[0]}-${data.childName.toLowerCase().slice(0, 3)}` : 'ID: pending';
-  const ageLabel = data ? `${data.age} Years Old` : 'Pending';
+  const intakeIdLabel = data ? `ID: ${data.timestamp ? data.timestamp.split('T')[0] : 'new'}-${(data.childName || 'Child').toLowerCase().slice(0, 3)}` : 'ID: pending';
+  const ageLabel = data?.age ? `${data.age} Years Old` : 'Not Specified';
   const medicalSummary = !data
     ? 'No intake data has been submitted yet. Medical notes and allergy flags will appear here once the intake is generated.'
-    : data.medicalNotes === 'None'
+    : (data.medicalNotes === 'None' || !data.medicalNotes)
       ? 'No immediate medical concerns reported.'
       : data.medicalNotes;
-  const developmentalSummary = data
+  const developmentalSummary = data?.ageCare
     ? `“${data.ageCare}”`
     : 'A developmental summary will appear here after the family intake has been captured.';
-  const dateLabel = data ? new Date(data.timestamp).toLocaleDateString() : 'Loading';
+  const dateLabel = data?.timestamp ? new Date(data.timestamp).toLocaleDateString() : 'Loading';
 
   const handleExportPdf = async () => {
     if (!data) {
@@ -98,7 +98,7 @@ export function DigitalIntakeDoc({ data, compact = false }: LeadDocProps) {
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Parent / Guardian</p>
-                <p className={`${compact ? 'text-lg' : 'text-xl'} font-semibold text-gray-900`}>{data?.parentName ?? 'Waiting for submission'}</p>
+                <p className={`${compact ? 'text-lg' : 'text-xl'} font-semibold text-gray-900`}>{data?.parentName || 'Guardian'}</p>
               </div>
             </div>
           </section>
@@ -154,11 +154,11 @@ export function DigitalIntakeDoc({ data, compact = false }: LeadDocProps) {
             <button
               type="button"
               onClick={handleExportPdf}
-              disabled={!hasData || isExporting}
+              disabled={!data || isExporting}
               className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-black transition-colors disabled:cursor-not-allowed disabled:bg-gray-500"
             >
               {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-              {!hasData ? 'PDF Unavailable' : isExporting ? 'Generating...' : 'Export PDF'}
+              {!data ? 'PDF Unavailable' : isExporting ? 'Generating...' : 'Export PDF'}
             </button>
           </div>
 

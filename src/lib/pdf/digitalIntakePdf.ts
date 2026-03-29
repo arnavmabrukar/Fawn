@@ -68,16 +68,24 @@ function formatDate(timestamp: string) {
 }
 
 function intakeId(data: IntakeDocData) {
-  return `${data.timestamp.split("T")[0]}-${data.childName.toLowerCase().slice(0, 3)}`;
+  const childPart = (data.childName || 'Child').toLowerCase().slice(0, 3);
+  const timePart = (data.timestamp || new Date().toISOString()).split("T")[0];
+  return `${timePart}-${childPart}`;
 }
 
 function buildOverview(data: IntakeDocData) {
+  const child = data.childName || "Your child";
+  const age = data.age || "early childhood";
+  const parent = data.parentName || "guardian";
+  const notes = data.medicalNotes || "None";
+  const care = data.ageCare || "early childhood development";
+
   return [
-    `${data.childName} is a ${data.age}-year-old child associated with parent or guardian ${data.parentName}. This summary is intended for internal intake review and enrollment follow-up.`,
-    data.medicalNotes === "None"
+    `${child} is a ${age} associated with parent or guardian ${parent}. This summary is intended for internal intake review and enrollment follow-up.`,
+    notes === "None"
       ? "No immediate medical concerns were reported during intake."
-      : `Reported medical notes include ${data.medicalNotes}.`,
-    `Developmental guidance recorded at intake focuses on ${data.ageCare.charAt(0).toLowerCase()}${data.ageCare.slice(1)}`,
+      : `Reported medical notes include ${notes}.`,
+    `Developmental guidance recorded at intake focuses on ${care.charAt(0).toLowerCase()}${care.slice(1)}`,
   ];
 }
 
@@ -100,8 +108,9 @@ export async function exportDigitalIntakePdf(data: IntakeDocData) {
     data.medicalNotes === "None" ? "No additional allergen guidance generated." : data.hiddenAllergens;
 
   const measureTextBlock = (text: string, fontSize: number, maxWidth = contentWidth, lineGap = 2) => {
+    const safeText = text || "";
     pdf.setFontSize(fontSize);
-    const lines = pdf.splitTextToSize(text, maxWidth);
+    const lines = pdf.splitTextToSize(safeText, maxWidth);
     return lines.length * fontSize * 1.15 + Math.max(lines.length - 1, 0) * lineGap;
   };
 
@@ -166,6 +175,7 @@ export async function exportDigitalIntakePdf(data: IntakeDocData) {
       x?: number;
     },
   ) => {
+    const safeText = text || "";
     const fontSize = options?.fontSize ?? sizes.body;
     const maxWidth = options?.maxWidth ?? contentWidth;
     const lineGap = options?.lineGap ?? 2 * scale;
@@ -175,7 +185,7 @@ export async function exportDigitalIntakePdf(data: IntakeDocData) {
     pdf.setFontSize(fontSize);
     pdf.setTextColor(...(options?.color ?? BRAND.body));
 
-    const lines = pdf.splitTextToSize(text, maxWidth);
+    const lines = pdf.splitTextToSize(safeText, maxWidth);
     const blockHeight = lines.length * fontSize * 1.15 + Math.max(lines.length - 1, 0) * lineGap;
     pdf.text(lines, x, cursorY, { baseline: "top" });
     cursorY += blockHeight;

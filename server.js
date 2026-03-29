@@ -4,7 +4,7 @@ const WebSocket = require('ws');
 const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 const { google } = require('googleapis');
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { connectDB, Lead, Call, ToyFeedback, RoomRatio } = require('./db');
 
 
@@ -50,20 +50,29 @@ const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 
 // Initialize Gemini for Document Content Generation
-const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 async function generateLeadDocumentData(parentName, childName, age, medicalNotes) {
+  const safeParent = parentName || 'Guardian';
+  const safeChild = childName || 'Child';
+  const safeAge = age || 'Not Specified';
+  const safeMedical = medicalNotes || 'None';
+
+  // Default values in case Gemini fails
+  let ageCare = "Standard age-appropriate care and developmental activities.";
+  let hiddenAllergens = "No specific restrictions.";
+
   try {
     const prompt = `
       You are a daycare safety and care expert. Generate personalized content for a new student intake document.
       
-      Child Name: ${childName}
-      Age: ${age} years old
-      Known Medical/Allergy Notes: ${medicalNotes || 'None'}
+      Child Name: ${safeChild}
+      Age: ${safeAge} years old
+      Known Medical/Allergy Notes: ${safeMedical}
       
       Please provide exactly two sections in plain text:
-      1. "AGE_CARE": A short 2-3 sentence paragraph about specific care needs for a ${age}-year-old (e.g., focus on motor skills, potty training, or social play).
+      1. "AGE_CARE": A short 2-3 sentence paragraph about specific care needs for a ${safeAge}-year-old (e.g., focus on motor skills, potty training, or social play).
       2. "HIDDEN_ALLERGENS": If the notes mention a food allergy (like peanuts, dairy, etc.), list 3-4 surprising or "hidden" foods that might contain that ingredient. If no allergy is mentioned, write "No specific food restrictions identified. Standard healthy daycare menu applies."
       
       Format your response as:
@@ -74,22 +83,28 @@ async function generateLeadDocumentData(parentName, childName, age, medicalNotes
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
-    const ageCare = text.match(/AGE_CARE:\s*(.*)/)?.[1] || "Standard age-appropriate care applied.";
-    const hiddenAllergens = text.match(/HIDDEN_ALLERGENS:\s*(.*)/s)?.[1] || "No specific restrictions.";
-
-    // Emit the document data via Pusher
-    pusher.trigger('fawn-live', 'lead-document', {
-      parentName,
-      childName,
-      age,
-      medicalNotes: medicalNotes || 'None',
-      ageCare: ageCare.trim(),
-      hiddenAllergens: hiddenAllergens.trim(),
-      timestamp: new Date().toISOString()
-    }).catch(err => console.error('[Pusher lead-document error]', err));
-
+    ageCare = text.match(/AGE_CARE:\s*(.*)/)?.[1]?.trim() || ageCare;
+    hiddenAllergens = text.match(/HIDDEN_ALLERGENS:\s*(.*)/s)?.[1]?.trim() || hiddenAllergens;
+    console.log('[Doc Gen] Gemini content generated successfully.');
   } catch (err) {
-    console.error('[Gemini Doc Gen Error]', err);
+    console.error('[Gemini Doc Gen Error]', err.message || err);
+    console.log('[Doc Gen] Falling back to defaults — document will still be emitted.');
+  }
+
+  // ALWAYS emit the document, even if Gemini failed
+  try {
+    await pusher.trigger('fawn-live', 'lead-document', {
+      parentName: safeParent,
+      childName: safeChild,
+      age: safeAge,
+      medicalNotes: safeMedical,
+      ageCare,
+      hiddenAllergens,
+      timestamp: new Date().toISOString()
+    });
+    console.log(`[Doc Gen] lead-document event emitted for ${safeChild}`);
+  } catch (pusherErr) {
+    console.error('[Pusher lead-document error]', pusherErr);
   }
 }
 
@@ -127,18 +142,31 @@ async function appendLeadToSheet(name, childName, age, notes = "") {
   }
 }
 
+function getNYIso(dateInput) {
+  const date = new Date(dateInput);
+  const f = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'America/New_York', 
+    year: 'numeric', month: '2-digit', day: '2-digit', 
+    hour: '2-digit', minute: '2-digit', second: '2-digit', 
+    hour12: false 
+  });
+  const p = f.formatToParts(date);
+  const g = (t) => p.find(x => x.type === t).value;
+  return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}:${g('second')}`;
+}
+
 async function bookTourOnCalendar(name, dateTime) {
   try {
     const event = {
       summary: `Daycare Tour: ${name}`,
       description: `In-person tour booked via Fawn AI`,
       start: {
-        dateTime: new Date(dateTime).toISOString(),
-        timeZone: 'UTC', // Ideally parse from user or daycare setting
+        dateTime: getNYIso(dateTime),
+        timeZone: 'America/New_York',
       },
       end: {
-        dateTime: new Date(new Date(dateTime).getTime() + 30 * 60000).toISOString(), // 30 min duration
-        timeZone: 'UTC',
+        dateTime: getNYIso(new Date(dateTime).getTime() + 30 * 60000),
+        timeZone: 'America/New_York',
       },
     };
     await calendar.events.insert({
@@ -158,10 +186,12 @@ async function bookDropInOnCalendar(name, roomName) {
             summary: `Drop-In: ${roomName} Room`,
             description: `Automatic drop-in expected via Fawn AI for parent: ${name || 'Unknown'}`,
             start: {
-                dateTime: soon.toISOString(),
+                dateTime: getNYIso(soon),
+                timeZone: 'America/New_York',
             },
             end: {
-                dateTime: new Date(soon.getTime() + 30 * 60000).toISOString(),
+                dateTime: getNYIso(new Date(soon.getTime() + 30 * 60000)),
+                timeZone: 'America/New_York',
             },
         };
         await calendar.events.insert({
@@ -307,7 +337,7 @@ app.get('/api/swarm', async (req, res) => {
 
     let ai;
     try {
-        ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     } catch(e) {
         // Fallback or error if not available
         sendEvent('error', { message: 'Failed to initialize Gemini SDK.' });
@@ -330,12 +360,11 @@ app.get('/api/swarm', async (req, res) => {
       
       let responseText = "";
       try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Toy Data:\n${dataStr}\n\nInstruction: ${agent.instruction}`,
-        });
-        responseText = response.text || "";
+        const agentModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await agentModel.generateContent(`Toy Data:\n${dataStr}\n\nInstruction: ${agent.instruction}`);
+        responseText = result.response.text();
       } catch (err) {
+        console.error(`Agent ${agent.id} Error`, err);
         responseText = "- Error calling agent API.\n- Skipping analysis for this agent.";
       }
 
@@ -358,11 +387,9 @@ Format your output exactly as a JSON array of objects with the following keys: "
 
     let consensusResponseText = "[]";
     try {
-        const consensusResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: consensusPrompt
-        });
-        consensusResponseText = consensusResponse.text || "[]";
+        const consensusModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const consensusResult = await consensusModel.generateContent(consensusPrompt);
+        consensusResponseText = consensusResult.response.text();
     } catch (err) {
         console.error("Consensus Error", err);
     }
@@ -466,13 +493,14 @@ wss.on('connection', (twWs) => {
           },
           {
             name: "GenerateDoc",
-            description: "Generates an intake form.",
+            description: "Generates an intake form based on the parent conversation.",
             parameters: {
               type: "OBJECT",
               properties: {
-                child_name: { type: "STRING" },
-                age: { type: "STRING" },
-                medical_notes: { type: "STRING" }
+                parent_name: { type: "STRING", description: "The name of the parent or guardian." },
+                child_name: { type: "STRING", description: "The name of the child being enrolled." },
+                age: { type: "STRING", description: "The age or date of birth of the child." },
+                medical_notes: { type: "STRING", description: "Any medical notes or allergies mentioned." }
               },
               required: ["child_name", "age"]
             }
@@ -608,21 +636,21 @@ wss.on('connection', (twWs) => {
                     emitAction("calendar", "Tour Booked", `Parent: ${call.args.name}, Time: ${call.args.date_time}`);
                     await bookTourOnCalendar(call.args.name, call.args.date_time);
                 } else if (call.name === "GenerateDoc") {
-                    emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name}, Age: ${call.args.age}. Med: ${call.args.medical_notes || 'None'}`);
+                    emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name || 'Unknown'}, Age: ${call.args.age || 'N/A'}. Med: ${call.args.medical_notes || 'None'}`);
                     
                     // 1. Traditional Storage (Sheets/DB)
                     appendLeadToSheet(
                         call.args.parent_name || "New Parent", 
-                        call.args.child_name, 
-                        call.args.age, 
+                        call.args.child_name || "Child", 
+                        call.args.age || "Unknown", 
                         call.args.medical_notes
                     );
 
-                    // 2. AI Document Preview Generation (New)
-                    generateLeadDocumentData(
+                    // 2. AI Document Preview Generation — await so it completes before tool response
+                    await generateLeadDocumentData(
                         call.args.parent_name || "New Parent",
-                        call.args.child_name,
-                        call.args.age,
+                        call.args.child_name || "Child",
+                        call.args.age || "Unknown",
                         call.args.medical_notes
                     );
                 } else if (call.name === "CheckRoomAvailability") {
