@@ -370,7 +370,7 @@ wss.on('connection', (twWs) => {
         }
       },
       system_instruction: {
-        parts: [{ text: "You are Fawn, a bilingual receptionist for Sunshine Daycare. Your default language is English. You must answer calls warmly in English. If a parent starts speaking to you in Spanish, you must immediately and permanently switch to Spanish for the remainder of the conversation. If they ask about you being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief! If a parent asks for a drop-in spot (plazas libres), you MUST use the CheckRoomAvailability tool. If the room is full, you must legally decline the drop-in and explain the state-mandated ratios. Do NOT offer a tour if a drop-in is denied; assume drop-in requests come from existing parents. For all conclusions, politely ask if there is anything else you can help with (e.g., 'Is there anything else I can help you with?'), UNLESS the parent signals the end of the call with a phrase like 'that'd be all' or 'thank you, that is all.' In those cases, simply provide a warm, polite sign-off like 'Have a wonderful day!' and end the turn." }]
+        parts: [{ text: "LANGUAGE: Your default language is English but you are fully bilingual in Spanish. If a parent starts speaking Spanish, you MUST switch to Spanish immediately and permanently. ROLES: You are Fawn, a receptionist for Sunshine Daycare. Answer calls warmly. If asked about being a robot, explain you're an AI helper so teachers can stay with the kids. Keep it brief! TOOL USAGE: If a parent asks for a drop-in spot (plazas libres), you MUST use the CheckRoomAvailability tool. If the room is full, you must legally decline the drop-in and explain the state-mandated ratios. Do NOT offer a tour if a drop-in is denied. Always conclude by asking 'is there anything else I can help with?' unless they say they are done." }]
       },
       tools: [{
         function_declarations: [
@@ -562,14 +562,19 @@ wss.on('connection', (twWs) => {
                         if (ratioData) {
                             const isFull = ratioData.currentKids >= ratioData.maxKids;
                             result = { 
-                                result: "success", 
-                                info: `The ${ratioData.roomName} room has ${ratioData.currentKids}/${ratioData.maxKids} children. ${isFull ? "DENY: ROOM IS FULL." : "ACCEPT: Space available."}` 
+                                status: "success", 
+                                room: ratioData.roomName,
+                                current_occupancy: ratioData.currentKids,
+                                max_capacity: ratioData.maxKids,
+                                is_full_legal_limit: isFull,
+                                ratio: ratioData.ratioLimit
                             };
                         } else {
-                            const roomSummaries = allRatios.map(r => `${r.roomName}: ${r.currentKids}/${r.maxKids}`).join(', ');
+                            const available = allRatios.map(r => r.roomName);
                             result = { 
-                                result: "success", 
-                                info: `Room '${safeName}' not found. Valid rooms are: ${roomSummaries}` 
+                                status: "not_found", 
+                                requested_room: safeName,
+                                valid_rooms: available
                             };
                         }
                     } catch (dbErr) {
