@@ -7,7 +7,7 @@ import { AdminNoteComposer } from '@/components/dashboard/AdminNoteComposer';
 import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
 import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
 import { HistoryModal } from '@/components/dashboard/HistoryModal';
-import { DigitalIntakeDoc } from '@/components/admin/DigitalIntakeDoc';
+import { IntakeSummaryModal } from '@/components/dashboard/IntakeSummaryModal';
 import { Trash2, Play, ExternalLink, Sparkles, Database } from 'lucide-react';
 import {
   ActionEntry,
@@ -32,6 +32,7 @@ export function AdminDashboard() {
   const [dbLeads, setDbLeads] = useState<any[]>([]);
   const [dbCalls, setDbCalls] = useState<any[]>([]);
   const [activeLeadDoc, setActiveLeadDoc] = useState<any>(null);
+  const [isIntakeSummaryOpen, setIsIntakeSummaryOpen] = useState(false);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   const openHistoryModal = async () => {
@@ -165,6 +166,7 @@ export function AdminDashboard() {
     setActions([]);
     setFawnMessage('');
     setActiveLeadDoc(null);
+    setIsIntakeSummaryOpen(false);
   };
 
   const startSimulation = () => {
@@ -277,7 +279,16 @@ export function AdminDashboard() {
 
       <MetricsHeader leads={leads} calls={calls} />
 
-      <div className="mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <LiveAgentPanel isOnCall={isOnCall} transcript={transcript} message={fawnMessage} />
+        <AutonomousActionsFeed
+          actions={actions}
+          hasIntakeSummary={Boolean(activeLeadDoc)}
+          onOpenIntakeSummary={activeLeadDoc ? () => setIsIntakeSummaryOpen(true) : undefined}
+        />
+      </div>
+
+      <div className="mt-6 mb-6">
         <AdminNoteComposer
           sourceId={sourceIdRef.current}
           onSubmitted={(action) =>
@@ -296,11 +307,6 @@ export function AdminDashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <LiveAgentPanel isOnCall={isOnCall} transcript={transcript} message={fawnMessage} />
-        <AutonomousActionsFeed actions={actions} />
-      </div>
-
       <div className="mt-6 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
         <div className="mb-5">
           <h2 className="text-xl font-bold text-gray-800">Tour Calendar</h2>
@@ -309,23 +315,24 @@ export function AdminDashboard() {
 
         <div className="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50">
           <iframe
-            src="https://calendar.google.com/calendar/embed?src=96c2d905f9f8680926a24f1fc5d32d65acc1a67e9da6729c8e1d6ba8bcc689f5%40group.calendar.google.com&ctz=America%2FNew_York"
+            src="https://calendar.google.com/calendar/embed?src=96c2d905f9f8680926a24f1fc5d32d65acc1a67e9da6729c8e1d6ba8bcc689f5%40group.calendar.google.com&ctz=America%2FNew_York&mode=WEEK"
             title="Fawn Google Calendar"
-            className="h-[720px] w-full border-0"
+            className="h-[480px] w-full border-0 md:h-[560px]"
             scrolling="no"
           />
         </div>
       </div>
-
-      {activeLeadDoc && (
-        <DigitalIntakeDoc data={activeLeadDoc} />
-      )}
 
       <HistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         leads={dbLeads}
         calls={dbCalls}
+      />
+      <IntakeSummaryModal
+        isOpen={isIntakeSummaryOpen}
+        onClose={() => setIsIntakeSummaryOpen(false)}
+        data={activeLeadDoc}
       />
     </div>
   );

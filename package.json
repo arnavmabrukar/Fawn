@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "framer-motion": "^12.38.0",
     "googleapis": "^171.4.0",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.7.0",
     "mongoose": "^9.3.3",
     "next": "14.2.35",

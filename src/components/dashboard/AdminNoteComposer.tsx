@@ -16,9 +16,10 @@ type AdminNoteComposerProps = {
   onSubmitted?: (action: ActionEntry) => void;
   onCleared?: () => void;
   sourceId: string;
+  compact?: boolean;
 };
 
-export function AdminNoteComposer({ onSubmitted, onCleared, sourceId }: AdminNoteComposerProps) {
+export function AdminNoteComposer({ onSubmitted, onCleared, sourceId, compact = false }: AdminNoteComposerProps) {
   const [childName, setChildName] = useState('');
   const [note, setNote] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -105,20 +106,20 @@ export function AdminNoteComposer({ onSubmitted, onCleared, sourceId }: AdminNot
   };
 
   return (
-    <section className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <section className={`flex h-full flex-col rounded-3xl border border-gray-100 bg-white shadow-sm ${compact ? 'p-5' : 'p-6'}`}>
+      <div className={`flex flex-col gap-4 ${compact ? 'xl:flex-col' : 'md:flex-row'} ${compact ? '' : 'md:items-start md:justify-between'}`}>
         <div>
           <div className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-orange-600">
             <MessageSquareText size={14} />
             Family Updates
           </div>
-          <h2 className="mt-4 text-2xl font-bold text-gray-900">Broadcast a live note to the client portal</h2>
-          <p className="mt-2 max-w-2xl text-sm text-gray-500">
+          <h2 className={`mt-4 font-bold text-gray-900 ${compact ? 'text-xl leading-tight' : 'text-2xl'}`}>Broadcast a live note to the client portal</h2>
+          <p className={`mt-2 text-sm text-gray-500 ${compact ? 'max-w-none' : 'max-w-2xl'}`}>
             Anything you send here is timestamped and published into the same audit log the family sees.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className={`flex gap-3 ${compact ? 'flex-col sm:flex-row sm:items-center' : 'items-center'}`}>
           {lastSentAt ? (
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
               Last sent at {formatClockTime(lastSentAt)}
@@ -136,8 +137,8 @@ export function AdminNoteComposer({ onSubmitted, onCleared, sourceId }: AdminNot
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
-        <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+      <form onSubmit={handleSubmit} className={`grid flex-1 gap-4 ${compact ? 'mt-5 content-between' : 'mt-6'}`}>
+        <div className={`grid gap-4 ${compact ? 'grid-cols-1' : 'md:grid-cols-[220px_1fr]'}`}>
           <label className="grid gap-2">
             <span className="text-sm font-medium text-gray-700">Child name</span>
             <input
@@ -154,13 +155,13 @@ export function AdminNoteComposer({ onSubmitted, onCleared, sourceId }: AdminNot
               value={note}
               onChange={(event) => setNote(event.target.value)}
               placeholder="Example: Leo had a smooth drop-off and is settling into the art table."
-              rows={4}
+              rows={compact ? 3 : 4}
               className="resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-daycare-teal focus:bg-white"
             />
           </label>
         </div>
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className={`flex flex-col gap-3 ${compact ? 'sm:flex-row sm:items-center sm:justify-between' : 'md:flex-row md:items-center md:justify-between'}`}>
           <div className="min-h-6 text-sm text-gray-500">
             {error ? (
               <span className="inline-flex items-center gap-2 text-red-600">

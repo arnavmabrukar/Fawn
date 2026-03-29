@@ -7,6 +7,8 @@ import { ActionEntry, ActionType, formatClockTime } from '@/lib/live-feed';
 
 interface AutonomousActionsFeedProps {
   actions: ActionEntry[];
+  onOpenIntakeSummary?: () => void;
+  hasIntakeSummary?: boolean;
 }
 
 const getIconForType = (type: ActionType) => {
@@ -37,7 +39,11 @@ const getBgForType = (type: ActionType) => {
   }
 };
 
-export function AutonomousActionsFeed({ actions }: AutonomousActionsFeedProps) {
+export function AutonomousActionsFeed({
+  actions,
+  onOpenIntakeSummary,
+  hasIntakeSummary = false,
+}: AutonomousActionsFeedProps) {
   // Sort actions with the latest at the top
   const sortedActions = [...actions].reverse();
 
@@ -72,6 +78,20 @@ export function AutonomousActionsFeed({ actions }: AutonomousActionsFeedProps) {
                   <div className="flex-1">
                     <h3 className="text-sm font-bold text-gray-800">{action.title}</h3>
                     <p className="text-sm text-gray-600 mt-1">{action.description}</p>
+                    {action.type === 'document' && (
+                      <button
+                        type="button"
+                        onClick={onOpenIntakeSummary}
+                        disabled={!onOpenIntakeSummary}
+                        className={`mt-3 inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold uppercase tracking-[0.18em] transition ${
+                          onOpenIntakeSummary
+                            ? 'border border-emerald-600 bg-emerald-600 text-white shadow-[0_10px_24px_rgba(22,163,74,0.22)] hover:-translate-y-0.5 hover:bg-emerald-700'
+                            : 'border border-gray-200 bg-white text-gray-400 disabled:cursor-not-allowed'
+                        }`}
+                      >
+                        {hasIntakeSummary ? 'View Intake Summary' : 'Loading Summary'}
+                      </button>
+                    )}
                     <span className="text-xs text-gray-400 mt-2 block font-medium">
                       {formatClockTime(action.timestamp)}
                     </span>
