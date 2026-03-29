@@ -171,11 +171,11 @@ export default function AIAgentPage() {
   const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
   const [toyRecords, setToyRecords] = useState<ToyRecord[]>([]);
   const [swarmResults, setSwarmResults] = useState<SwarmResult[]>([]);
-  const [activeIds, setActiveIds] = useState<Set<string>>(new Set());
-  const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+  const [activeIds, setActiveIds] = useState<string[]>([]);
+  const [doneIds, setDoneIds] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch('/api/toys')
+    fetch('http://localhost:8080/api/toys')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setToyRecords(data);
@@ -189,8 +189,8 @@ export default function AIAgentPage() {
     setSwarmState("running");
     setSwarmResults([]);
     setAgents(INITIAL_AGENTS.map(a => ({ ...a, messages: [] })));
-    setActiveIds(new Set());
-    setDoneIds(new Set());
+    setActiveIds([]);
+    setDoneIds([]);
 
     const evtSource = new EventSource('http://localhost:8080/api/swarm');
 
@@ -200,7 +200,7 @@ export default function AIAgentPage() {
 
     evtSource.addEventListener('agent_start', (e) => {
       const { id } = JSON.parse(e.data);
-      setActiveIds(prev => new Set([...prev, id]));
+      setActiveIds(prev => prev.includes(id) ? prev : [...prev, id]);
     });
 
     evtSource.addEventListener('agent_message', (e) => {
@@ -219,12 +219,8 @@ export default function AIAgentPage() {
 
     evtSource.addEventListener('agent_done', (e) => {
       const { id } = JSON.parse(e.data);
-      setActiveIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      setDoneIds(prev => new Set([...prev, id]));
+      setActiveIds(prev => prev.filter(aId => aId !== id));
+      setDoneIds(prev => prev.includes(id) ? prev : [...prev, id]);
     });
 
     evtSource.addEventListener('result', (e) => {
@@ -244,8 +240,8 @@ export default function AIAgentPage() {
   const resetSwarm = () => {
     setSwarmState("idle");
     setAgents(INITIAL_AGENTS.map(a => ({ ...a, messages: [] })));
-    setActiveIds(new Set());
-    setDoneIds(new Set());
+    setActiveIds([]);
+    setDoneIds([]);
     setSwarmResults([]);
   };
 
@@ -379,8 +375,8 @@ export default function AIAgentPage() {
                   <AgentCard
                     key={agent.id}
                     agent={agent}
-                    isActive={activeIds.has(agent.id)}
-                    isDone={doneIds.has(agent.id)}
+                    isActive={activeIds.includes(agent.id)}
+                    isDone={doneIds.includes(agent.id)}
                   />
                 ))}
               </div>
