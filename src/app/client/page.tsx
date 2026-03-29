@@ -126,7 +126,7 @@ export default function ClientPortalPage() {
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <a href="/" className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
+            <a href="/admin" className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900">
               <ArrowLeft size={16} />
               Back to Director View
             </a>
