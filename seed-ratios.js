@@ -1,44 +1,44 @@
-require('dotenv').config({ path: 'c:/Users/reyaz/Downloads/fawnai/.env' });
+require('dotenv').config();
 const mongoose = require('mongoose');
-const { RoomRatio } = require('c:/Users/reyaz/Downloads/fawnai/db.js');
 
-const seedRatios = async () => {
+const roomRatioSchema = new mongoose.Schema({
+  roomName: { type: String, required: true },
+  currentKids: { type: Number, default: 0 },
+  maxKids: { type: Number, required: true },
+  ratioLimit: { type: String, required: true },
+});
+
+const RoomRatio = mongoose.models.RoomRatio || mongoose.model('RoomRatio', roomRatioSchema);
+
+async function seed() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('[DB] MongoDB Connected for Seeding Room Ratios');
-
-    // Clear existing
+    const uri = process.env.MONGODB_URI;
+    if (!uri) throw new Error('MONGODB_URI is missing');
+    
+    console.log('[Seed] Connecting to MongoDB...');
+    await mongoose.connect(uri);
+    
+    console.log('[Seed] Clearing roomratios collection...');
     await RoomRatio.deleteMany({});
-    console.log('[DB] Cleared existing room ratios');
-
-    const ratios = [
-      {
-        roomName: "Infants",
-        currentKids: 3,
-        maxKids: 4,
-        ratioLimit: "1:4"
-      },
-      {
-        roomName: "Toddlers",
-        currentKids: 6,
-        maxKids: 6,
-        ratioLimit: "1:6" // Full limit
-      },
-      {
-        roomName: "Pre-K",
-        currentKids: 8,
-        maxKids: 12,
-        ratioLimit: "1:12"
-      }
+    
+    const rooms = [
+      { roomName: "Infants", currentKids: 3, maxKids: 4, ratioLimit: "1:4" },
+      { roomName: "Toddlers", currentKids: 6, maxKids: 6, ratioLimit: "1:6" },
+      { roomName: "Pre-K", currentKids: 8, maxKids: 12, ratioLimit: "1:12" }
     ];
-
-    await RoomRatio.insertMany(ratios);
-    console.log('[DB] Inserted 3 Room Ratios Successfully!');
+    
+    console.log('[Seed] Inserting 3 room ratios...');
+    await RoomRatio.insertMany(rooms);
+    
+    console.log('[Seed] Verification check...');
+    const count = await RoomRatio.countDocuments();
+    console.log(`[Seed] Successfully seeded ${count} rooms!`);
+    
     process.exit(0);
   } catch (err) {
-    console.error('Error seeding data:', err);
+    console.error('[Seed] FAILED:', err);
     process.exit(1);
   }
-};
+}
 
-seedRatios();
+seed();

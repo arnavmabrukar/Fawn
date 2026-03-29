@@ -531,119 +531,68 @@ wss.on('connection', (twWs) => {
         }
         
     } else if (msg.toolCall) {
-        msg.toolCall.functionCalls.forEach(async (call) => {
-            console.log(`[Gemini ToolCall] ${call.name}`, call.args);
-            
-            if (call.name === "BookCalendar") {
-                emitAction("calendar", "Tour Booked", `Parent: ${call.args.name}, Time: ${call.args.date_time}`);
-                // Actively book on Google Calendar
-                await bookTourOnCalendar(call.args.name, call.args.date_time);
-            } else if (call.name === "GenerateDoc") {
-                emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name}, Age: ${call.args.age}. Med: ${call.args.medical_notes || 'None'}`);
-                // Instead of a doc, we append to our "Leads/Intake" sheet
-                await appendLeadToSheet(
-                    call.args.parent_name || "New Parent", 
-                    call.args.child_name, 
-                    call.args.age, 
-                    call.args.medical_notes
-                );
-            } else if (call.name === "CheckRoomAvailability") {
-                const room_name = call.args.room_name;
-                emitAction("calendar", "Checking Room Ratios", `Checking live MongoDB capacity for ${room_name} room.`);
+        const executeTools = async () => {
+            for (const call of msg.toolCall.functionCalls) {
+                console.log(`[Gemini ToolCall] ${call.name}`, call.args);
                 
-                try {
-                    const safeName = call.args.room_name || "Unknown";
-                    const strippedName = safeName.replace(/s$/i, '');
-                    const searchRegex = new RegExp(`^${strippedName || 'xyz123'}`, 'i');
-                    const ratioData = await RoomRatio.findOne({ roomName: { $regex: searchRegex } });
-                    
-                    if (ratioData) {
-                        const isFull = ratioData.currentKids >= ratioData.maxKids;
-                        const responseString = `The ${ratioData.roomName} room currently has ${ratioData.currentKids} children out of a maximum allowed capacity of ${ratioData.maxKids} children. The legal ratio is ${ratioData.ratioLimit}. ${isFull ? "The room is AT MAXIMUM LEGAL CAPACITY. You MUST deny the drop-in." : "There is space available. You may accept the drop-in."}`;
-                        
-                        gemWs.send(JSON.stringify({
-                            toolResponse: {
-                                functionResponses: [{
-                                    id: call.id,
-                                    name: call.name,
-                                    response: { result: "success", info: responseString }
-                                }]
-                            }
-                        }));
-                        // Nudge Gemini to continue the conversation after tool use
-                        gemWs.send(JSON.stringify({
-                            clientContent: {
-                                turns: [],
-                                turnComplete: true
-                            }
-                        }));
-                        console.log(`[Gemini ToolResponse] Sent:`, responseString);
-                    } else {
-                        // Instead of sending "error", stringify the available rooms nicely so Gemini can recover natively
-                        const allRooms = await RoomRatio.find({}, 'roomName currentKids maxKids');
-                        const roomSummaries = allRooms.map(r => `${r.roomName}: ${r.currentKids}/${r.maxKids}`).join(', ');
-                        
-                        gemWs.send(JSON.stringify({
-                            toolResponse: {
-                                functionResponses: [{
-                                    id: call.id,
-                                    name: call.name,
-                                    response: { 
-                                        result: "success", 
-                                        info: `I could not find the room '${safeName}'. The only valid rooms are: ${roomSummaries}. Please re-evalute and answer based on those three.` 
-                                    }
-                                }]
-                            }
-                        }));
-                        // Nudge Gemini to continue the conversation after tool use
-                        gemWs.send(JSON.stringify({
-                            clientContent: {
-                                turns: [],
-                                turnComplete: true
-                            }
-                        }));
-                        console.log(`[Gemini ToolResponse] Sent correction for unknown room: ${safeName}`);
-                    }
-                } catch (dbErr) {
-                    console.error('[DB Error CheckRoomAvailability]', dbErr);
-                    gemWs.send(JSON.stringify({
-                        toolResponse: {
-                            functionResponses: [{
-                                id: call.id,
-                                name: call.name,
-                                response: { result: "error", error: "Internal server error while checking database." }
-                            }]
-                        }
-                    }));
-                    // Nudge Gemini to continue the conversation after tool use
-                    gemWs.send(JSON.stringify({
-                        clientContent: {
-                            turns: [],
-                            turnComplete: true
-                        }
-                    }));
-                }
-                return; // Prevent the generic tool response below from sending twice
-            }
+                let result = { result: "success" };
 
-            // Respond back to Gemini WS so she keeps talking for BookCalendar and GenerateDoc
-            gemWs.send(JSON.stringify({
-                toolResponse: {
-                    functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { result: "success" }
-                    }]
+                if (call.name === "BookCalendar") {
+                    emitAction("calendar", "Tour Booked", `Parent: ${call.args.name}, Time: ${call.args.date_time}`);
+                    await bookTourOnCalendar(call.args.name, call.args.date_time);
+                } else if (call.name === "GenerateDoc") {
+                    emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name}, Age: ${call.args.age}. Med: ${call.args.medical_notes || 'None'}`);
+                    await appendLeadToSheet(
+                        call.args.parent_name || "New Parent", 
+                        call.args.child_name, 
+                        call.args.age, 
+                        call.args.medical_notes
+                    );
+                } else if (call.name === "CheckRoomAvailability") {
+                    const safeName = call.args.room_name || "Unknown";
+                    emitAction("calendar", "Checking Room Ratios", `Querying MongoDB for ${safeName} room.`);
+                    
+                    try {
+                        const allRatios = await RoomRatio.find({});
+                        const ratioData = allRatios.find(r => 
+                            r.roomName.toLowerCase().includes(safeName.toLowerCase().replace(/s$/i, '')) ||
+                            safeName.toLowerCase().includes(r.roomName.toLowerCase().replace(/s$/i, ''))
+                        );
+                        
+                        if (ratioData) {
+                            const isFull = ratioData.currentKids >= ratioData.maxKids;
+                            result = { 
+                                result: "success", 
+                                info: `The ${ratioData.roomName} room has ${ratioData.currentKids}/${ratioData.maxKids} children. ${isFull ? "DENY: ROOM IS FULL." : "ACCEPT: Space available."}` 
+                            };
+                        } else {
+                            const roomSummaries = allRatios.map(r => `${r.roomName}: ${r.currentKids}/${r.maxKids}`).join(', ');
+                            result = { 
+                                result: "success", 
+                                info: `Room '${safeName}' not found. Valid rooms are: ${roomSummaries}` 
+                            };
+                        }
+                    } catch (dbErr) {
+                        console.error('[DB Error CheckRoomAvailability]', dbErr);
+                        result = { result: "error", error: "Database lookup failed." };
+                    }
                 }
-            }));
-            // Nudge Gemini to continue the conversation after tool use
-            gemWs.send(JSON.stringify({
-                clientContent: {
-                    turns: [],
-                    turnComplete: true
-                }
-            }));
-        });
+
+                // Send standardized snake_case tool response
+                const toolResponse = {
+                    tool_response: {
+                        function_responses: [{
+                            id: call.id,
+                            name: call.name,
+                            response: result
+                        }]
+                    }
+                };
+                gemWs.send(JSON.stringify(toolResponse));
+                console.log(`[Gemini ToolResponse] Sent for ${call.name}`);
+            }
+        };
+        executeTools();
     }
   });
 
