@@ -553,7 +553,6 @@ wss.on('connection', (twWs) => {
                 
                 try {
                     const safeName = call.args.room_name || "Unknown";
-                    // Use a case-insensitive regex and strip trailing 's'
                     const strippedName = safeName.replace(/s$/i, '');
                     const searchRegex = new RegExp(`^${strippedName || 'xyz123'}`, 'i');
                     const ratioData = await RoomRatio.findOne({ roomName: { $regex: searchRegex } });
@@ -573,16 +572,23 @@ wss.on('connection', (twWs) => {
                         }));
                         console.log(`[Gemini ToolResponse] Sent:`, responseString);
                     } else {
+                        // Instead of sending "error", stringify the available rooms nicely so Gemini can recover natively
+                        const allRooms = await RoomRatio.find({}, 'roomName currentKids maxKids');
+                        const roomSummaries = allRooms.map(r => `${r.roomName}: ${r.currentKids}/${r.maxKids}`).join(', ');
+                        
                         gemWs.send(JSON.stringify({
                             toolResponse: {
                                 functionResponses: [{
                                     id: call.id,
                                     name: call.name,
-                                    response: { result: "error", error: `Room ${safeName} not found in database.` }
+                                    response: { 
+                                        result: "success", 
+                                        info: `I could not find the room '${safeName}'. The only valid rooms are: ${roomSummaries}. Please re-evalute and answer based on those three.` 
+                                    }
                                 }]
                             }
                         }));
-                        console.log(`[Gemini ToolResponse] Error: Room ${safeName} not found.`);
+                        console.log(`[Gemini ToolResponse] Sent correction for unknown room: ${safeName}`);
                     }
                 } catch (dbErr) {
                     console.error('[DB Error CheckRoomAvailability]', dbErr);
