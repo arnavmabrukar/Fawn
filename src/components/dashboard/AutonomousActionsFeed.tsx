@@ -48,7 +48,6 @@ export function AutonomousActionsFeed({ actions }: AutonomousActionsFeedProps) {
         <p className="text-sm text-gray-500">Live Agent Operations</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar relative">
         {actions.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center text-gray-400 flex-col">
             <CheckCircle2 size={48} className="mb-4 opacity-20" />
@@ -81,7 +80,6 @@ export function AutonomousActionsFeed({ actions }: AutonomousActionsFeedProps) {
             </AnimatePresence>
           </div>
         )}
-      </div>
     </div>
   );
 }

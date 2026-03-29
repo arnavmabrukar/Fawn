@@ -3,6 +3,7 @@ const express = require('express');
 const WebSocket = require('ws');
 const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
+const { google } = require('googleapis');
 
 const app = express();
 app.use(express.json());
@@ -22,6 +23,65 @@ const pusher = new Pusher({
   cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || process.env.PUSHER_CLUSTER || "us2",
   useTLS: true
 });
+
+// Initialize Google Workspace Clients
+const googleAuth = new google.auth.GoogleAuth({
+  keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  scopes: [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/calendar'
+  ],
+});
+
+const sheets = google.sheets({ version: 'v4', auth: googleAuth });
+const calendar = google.calendar({ version: 'v3', auth: googleAuth });
+
+async function appendLeadToSheet(name, childName, age, notes = "") {
+  try {
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+    const range = 'Sheet1!A:E';
+    const values = [[
+      new Date().toLocaleString(),
+      name || "Unknown",
+      childName,
+      age,
+      notes
+    ]];
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values },
+    });
+    console.log(`[Google Sheets] Lead added for ${childName}`);
+  } catch (err) {
+    console.error('[Google Sheets Error]', err.message);
+  }
+}
+
+async function bookTourOnCalendar(name, dateTime) {
+  try {
+    const event = {
+      summary: `Daycare Tour: ${name}`,
+      description: `In-person tour booked via Fawn AI`,
+      start: {
+        dateTime: new Date(dateTime).toISOString(),
+        timeZone: 'UTC', // Ideally parse from user or daycare setting
+      },
+      end: {
+        dateTime: new Date(new Date(dateTime).getTime() + 30 * 60000).toISOString(), // 30 min duration
+        timeZone: 'UTC',
+      },
+    };
+    await calendar.events.insert({
+      calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+      resource: event,
+    });
+    console.log(`[Google Calendar] Tour booked for ${name} at ${dateTime}`);
+  } catch (err) {
+    console.error('[Google Calendar Error]', err.message);
+  }
+}
 
 function emitAction(type, title, description, extra = {}) {
   try {
@@ -139,7 +199,7 @@ wss.on('connection', (twWs) => {
         }
       },
       system_instruction: {
-        parts: [{ text: "You are Fawn, an AI receptionist for Sunshine Daycare. You must answer calls, help parents book tours, and generate intake forms. Keep responses extremely brief and conversational! Ask one question at a time. Use tools when appropriate." }]
+        parts: [{ text: "You are Fawn, an AI receptionist for Sunshine Daycare. You must answer calls, help parents book tours, and generate intake forms. If a parent asks why they are talking to a robot, warmly explain that you handle the phones so the teachers can focus 100% of their attention on taking care of the kids! Also explain that being an AI allows you to instantly log information, book tours, and eventually automate messages to parents so nothing ever gets missed. Keep responses extremely brief and conversational! Ask one question at a time. Use tools when appropriate." }]
       },
       tools: [{
         function_declarations: [
@@ -287,28 +347,35 @@ wss.on('connection', (twWs) => {
         }
         
     } else if (msg.toolCall) {
-        msg.toolCall.functionCalls.forEach(call => {
+        msg.toolCall.functionCalls.forEach(async (call) => {
             console.log(`[Gemini ToolCall] ${call.name}`, call.args);
             
             if (call.name === "BookCalendar") {
                 emitAction("calendar", "Tour Booked", `Parent: ${call.args.name}, Time: ${call.args.date_time}`);
+                // Actively book on Google Calendar
+                await bookTourOnCalendar(call.args.name, call.args.date_time);
             } else if (call.name === "GenerateDoc") {
                 emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name}, Age: ${call.args.age}. Med: ${call.args.medical_notes || 'None'}`);
+                // Instead of a doc, we append to our "Leads/Intake" sheet
+                await appendLeadToSheet(
+                    call.args.parent_name || "New Parent", 
+                    call.args.child_name, 
+                    call.args.age, 
+                    call.args.medical_notes
+                );
             }
 
-            // Simulate instant success response back to Gemini WS
-            setTimeout(() => {
-                const response = {
-                    toolResponse: {
-                        functionResponses: [{
-                            id: call.id,
-                            name: call.name,
-                            response: { result: "success" }
-                        }]
-                    }
-                };
-                gemWs.send(JSON.stringify(response));
-            }, 500);
+            // Respond back to Gemini WS so she keeps talking
+            const response = {
+                toolResponse: {
+                    functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { result: "success" }
+                    }]
+                }
+            };
+            gemWs.send(JSON.stringify(response));
         });
     }
   });

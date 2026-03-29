@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [isOnCall, setIsOnCall] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [actions, setActions] = useState<ActionEntry[]>([]);
+  const [fawnMessage, setFawnMessage] = useState<string>('');
   const [leads, setLeads] = useState(12);
   const [calls, setCalls] = useState(45);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
@@ -29,6 +30,9 @@ export default function Dashboard() {
 
     channel.bind('transcript', (data: { speaker: 'fawn'|'caller', text: string }) => {
       setIsOnCall(true);
+      if (data.speaker === 'fawn') {
+        setFawnMessage(data.text);
+      }
       setTranscript(prev => [...prev, { id: crypto.randomUUID(), speaker: data.speaker, text: data.text }]);
     });
 
@@ -46,6 +50,7 @@ export default function Dashboard() {
         setCalls(prev => prev + 1);
         setTranscript([]);
         setActions([]);
+        setFawnMessage('');
     });
 
     channel.bind('call-end', () => {
@@ -100,6 +105,9 @@ export default function Dashboard() {
       const timeout = setTimeout(() => {
         if (step.type === 'transcript') {
           if (!step.data) return;
+          if (step.data.speaker === 'fawn') {
+            setFawnMessage(step.data.text as string);
+          }
           setTranscript(prev => [...prev, { id: crypto.randomUUID(), speaker: step.data.speaker as 'fawn'|'caller', text: step.data.text as string }]);
         } else if (step.type === 'action') {
           if (!step.data) return;
@@ -157,7 +165,7 @@ export default function Dashboard() {
       <MetricsHeader leads={leads} calls={calls} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <LiveAgentPanel isOnCall={isOnCall} transcript={transcript} />
+        <LiveAgentPanel isOnCall={isOnCall} transcript={transcript} message={fawnMessage} />
         <AutonomousActionsFeed actions={actions} />
       </div>
     </div>

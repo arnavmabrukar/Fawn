@@ -8,9 +8,10 @@ import { TranscriptEntry } from '@/lib/live-feed';
 interface LiveAgentPanelProps {
   isOnCall: boolean;
   transcript: TranscriptEntry[];
+  message: string;
 }
 
-export function LiveAgentPanel({ isOnCall, transcript }: LiveAgentPanelProps) {
+export function LiveAgentPanel({ isOnCall, transcript, message }: LiveAgentPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,6 +45,27 @@ export function LiveAgentPanel({ isOnCall, transcript }: LiveAgentPanelProps) {
 
       {/* Transcript Area */}
       <div className="flex-1 overflow-hidden relative flex flex-col bg-gray-50 rounded-2xl p-4 border border-gray-100">
+        {message && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mb-4 p-3 rounded-xl bg-teal-50 border border-teal-100 shadow-sm flex items-center space-x-3"
+          >
+            <div className="bg-white p-1.5 rounded-lg shadow-sm relative overflow-hidden">
+               <div className="absolute inset-0 bg-teal-200 opacity-20 animate-pulse" />
+               <Mic size={14} className="text-daycare-teal animate-bounce" />
+            </div>
+            <div className="flex-1 min-w-0">
+               <p className="text-xs font-bold text-daycare-teal uppercase tracking-widest leading-none mb-1">Agent Speaking</p>
+               <p className="text-sm font-medium text-gray-800 line-clamp-1 italic">
+                 "{message}"
+               </p>
+            </div>
+            <div className="flex space-x-0.5">
+               <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-ping" />
+            </div>
+          </motion.div>
+        )}
         {!isOnCall && transcript.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center flex-col text-gray-400">
             <Mic size={48} className="mb-4 opacity-20" />
