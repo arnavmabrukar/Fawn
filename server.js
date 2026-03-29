@@ -4,7 +4,7 @@ const WebSocket = require('ws');
 const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 const { google } = require('googleapis');
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { connectDB, Lead, Call, ToyFeedback, RoomRatio } = require('./db');
 
 
@@ -50,7 +50,7 @@ const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 
 // Initialize Gemini for Document Content Generation
-const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 async function generateLeadDocumentData(parentName, childName, age, medicalNotes) {
@@ -307,7 +307,7 @@ app.get('/api/swarm', async (req, res) => {
 
     let ai;
     try {
-        ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     } catch(e) {
         // Fallback or error if not available
         sendEvent('error', { message: 'Failed to initialize Gemini SDK.' });
@@ -330,12 +330,11 @@ app.get('/api/swarm', async (req, res) => {
       
       let responseText = "";
       try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: `Toy Data:\n${dataStr}\n\nInstruction: ${agent.instruction}`,
-        });
-        responseText = response.text || "";
+        const agentModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await agentModel.generateContent(`Toy Data:\n${dataStr}\n\nInstruction: ${agent.instruction}`);
+        responseText = result.response.text();
       } catch (err) {
+        console.error(`Agent ${agent.id} Error`, err);
         responseText = "- Error calling agent API.\n- Skipping analysis for this agent.";
       }
 
@@ -358,11 +357,9 @@ Format your output exactly as a JSON array of objects with the following keys: "
 
     let consensusResponseText = "[]";
     try {
-        const consensusResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: consensusPrompt
-        });
-        consensusResponseText = consensusResponse.text || "[]";
+        const consensusModel = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const consensusResult = await consensusModel.generateContent(consensusPrompt);
+        consensusResponseText = consensusResult.response.text();
     } catch (err) {
         console.error("Consensus Error", err);
     }

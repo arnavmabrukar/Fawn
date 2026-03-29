@@ -1,8 +1,9 @@
 "use client";
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { FileText, ShieldAlert, Heart, Info, User, Calendar, Stethoscope, Download } from 'lucide-react';
 import Image from 'next/image';
+import { useReactToPrint } from 'react-to-print';
 
 interface LeadDocProps {
   data: {
@@ -17,9 +18,50 @@ interface LeadDocProps {
 }
 
 export function DigitalIntakeDoc({ data }: LeadDocProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  
+  const handlePrint = useReactToPrint({
+    contentRef,
+    documentTitle: `Sunshine_Daycare_Intake_${data.childName.replace(/\s+/g, '_')}`,
+  });
+
   return (
     <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="overflow-hidden rounded-[2.5rem] border border-[#e5e0d8] bg-white shadow-[0_32px_80px_rgba(58,54,45,0.06)] backdrop-blur-sm">
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: auto;
+            margin: 15mm;
+          }
+          body {
+            background-color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .print-container {
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+          /* Ensure backgrounds are captured */
+          .bg-stone-50 { background-color: #f9f8f6 !important; }
+          .bg-[#1d3b36] { background-color: #1d3b36 !important; }
+          .bg-rose-50\/50 { background-color: rgba(255, 241, 242, 0.5) !important; }
+          .bg-teal-50\/50 { background-color: rgba(240, 253, 250, 0.5) !important; }
+          .bg-white\/10 { background-color: rgba(255, 255, 255, 0.1) !important; }
+        }
+      `}</style>
+
+      <div 
+        ref={contentRef}
+        className="print-container overflow-hidden rounded-[2.5rem] border border-[#e5e0d8] bg-white shadow-[0_32px_80px_rgba(58,54,45,0.06)] backdrop-blur-sm"
+      >
         {/* Document Header */}
         <div className="bg-[#1d3b36] p-8 md:p-10 text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
@@ -115,7 +157,10 @@ export function DigitalIntakeDoc({ data }: LeadDocProps) {
               <Calendar size={14} />
               <span className="text-xs font-medium uppercase tracking-[0.2em]">{new Date(data.timestamp).toLocaleDateString()}</span>
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-black transition-colors">
+            <button 
+              onClick={() => handlePrint()}
+              className="no-print flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-black transition-colors"
+            >
               <Download size={14} />
               Export PDF
             </button>
@@ -123,7 +168,7 @@ export function DigitalIntakeDoc({ data }: LeadDocProps) {
         </div>
       </div>
 
-      <div className="mt-6 flex justify-center">
+      <div className="no-print mt-6 flex justify-center">
         <div className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg text-xs font-bold uppercase tracking-widest border border-yellow-200 shadow-sm">
           <Info size={14} />
           Note: This document is an AI-generated summary for internal review.
