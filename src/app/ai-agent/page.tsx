@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Sparkles, Star, User, Brain, ShieldCheck, TrendingUp, DollarSign, CheckCircle2, Clock } from "lucide-react";
+import { Sparkles, Star, User, Brain, ShieldCheck, TrendingUp, DollarSign, CheckCircle2, Clock, ArrowLeft } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -250,38 +250,48 @@ export default function AIAgentPage() {
       <div className="max-w-[1400px] mx-auto">
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles size={22} className="text-purple-600" />
-              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Agentic Toy Picker</h1>
+        <div className="mb-8">
+          <a
+            href="/admin"
+            className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-purple-600 transition-colors mb-6"
+          >
+            <ArrowLeft size={16} />
+            Back to Dashboard
+          </a>
+          
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles size={22} className="text-purple-600" />
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Agentic Toy Picker</h1>
+              </div>
+              <p className="text-gray-500">
+                A 5-agent swarm analyzes real-time teacher feedback from MongoDB and recommends next week&apos;s toy lineup.
+              </p>
             </div>
-            <p className="text-gray-500">
-              A 5-agent swarm analyzes real-time teacher feedback from MongoDB and recommends next week&apos;s toy lineup.
-            </p>
-          </div>
 
-          <div className="flex gap-3">
-            {swarmState !== "idle" && (
+            <div className="flex gap-3">
+              {swarmState !== "idle" && (
+                <button
+                  onClick={resetSwarm}
+                  className="px-4 py-2 bg-white text-gray-600 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-sm"
+                >
+                  Reset
+                </button>
+              )}
               <button
-                onClick={resetSwarm}
-                className="px-4 py-2 bg-white text-gray-600 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-sm"
+                onClick={runSwarm}
+                disabled={swarmState === "running" || toyRecords.length === 0}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
+                  swarmState === "running" || toyRecords.length === 0
+                    ? "bg-purple-300 text-white cursor-not-allowed"
+                    : "bg-purple-600 text-white hover:bg-purple-700 hover:shadow-purple-200 hover:shadow-lg"
+                }`}
               >
-                Reset
+                <Sparkles size={16} />
+                 {toyRecords.length === 0 ? "Loading DB..." : swarmState === "running" ? "Agents Analyzing..." : "Run Gemini Swarm"}
               </button>
-            )}
-            <button
-              onClick={runSwarm}
-              disabled={swarmState === "running" || toyRecords.length === 0}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
-                swarmState === "running" || toyRecords.length === 0
-                  ? "bg-purple-300 text-white cursor-not-allowed"
-                  : "bg-purple-600 text-white hover:bg-purple-700 hover:shadow-purple-200 hover:shadow-lg"
-              }`}
-            >
-              <Sparkles size={16} />
-               {toyRecords.length === 0 ? "Loading DB..." : swarmState === "running" ? "Agents Analyzing..." : "Run Gemini Swarm"}
-            </button>
+            </div>
           </div>
         </div>
 
