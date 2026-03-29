@@ -201,6 +201,13 @@ export function AdminDashboard() {
             <ExternalLink size={16} />
             Client Portal
           </a>
+          <a
+            href="/ai-agent"
+            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors font-medium text-sm"
+          >
+            <ExternalLink size={16} />
+            AI Agent
+          </a>
           <button
             onClick={clearDashboard}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
