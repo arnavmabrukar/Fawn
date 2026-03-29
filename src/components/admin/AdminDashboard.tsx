@@ -6,7 +6,8 @@ import { MetricsHeader } from '@/components/dashboard/MetricsHeader';
 import { AdminNoteComposer } from '@/components/dashboard/AdminNoteComposer';
 import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
 import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
-import { Trash2, Play, ExternalLink, Sparkles } from 'lucide-react';
+import { HistoryModal } from '@/components/dashboard/HistoryModal';
+import { Trash2, Play, ExternalLink, Sparkles, Database } from 'lucide-react';
 import {
   ActionEntry,
   AUDIT_LOG_STORAGE_KEY,
@@ -26,7 +27,24 @@ export function AdminDashboard() {
   const [fawnMessage, setFawnMessage] = useState<string>('');
   const [leads, setLeads] = useState(12);
   const [calls, setCalls] = useState(45);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [dbLeads, setDbLeads] = useState<any[]>([]);
+  const [dbCalls, setDbCalls] = useState<any[]>([]);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
+
+  const openHistoryModal = async () => {
+    try {
+      const res = await fetch('http://localhost:8080/api/history');
+      if (res.ok) {
+        const data = await res.json();
+        setDbLeads(data.leads || []);
+        setDbCalls(data.calls || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
+    }
+    setIsHistoryOpen(true);
+  };
 
   useEffect(() => {
     setActions(readStoredAuditLog().map(toActionEntry));
@@ -209,6 +227,13 @@ export function AdminDashboard() {
             Client Portal
           </a>
           <button
+            onClick={openHistoryModal}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 border border-indigo-100 transition-colors font-medium text-sm shadow-sm"
+          >
+            <Database size={16} />
+            View Database
+          </button>
+          <button
             onClick={clearDashboard}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
           >
@@ -272,6 +297,13 @@ export function AdminDashboard() {
           />
         </div>
       </div>
+
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        leads={dbLeads}
+        calls={dbCalls}
+      />
     </div>
   );
 }
