@@ -49,6 +49,50 @@ const googleAuth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 
+// Initialize Gemini for Document Content Generation
+const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+async function generateLeadDocumentData(parentName, childName, age, medicalNotes) {
+  try {
+    const prompt = `
+      You are a daycare safety and care expert. Generate personalized content for a new student intake document.
+      
+      Child Name: ${childName}
+      Age: ${age} years old
+      Known Medical/Allergy Notes: ${medicalNotes || 'None'}
+      
+      Please provide exactly two sections in plain text:
+      1. "AGE_CARE": A short 2-3 sentence paragraph about specific care needs for a ${age}-year-old (e.g., focus on motor skills, potty training, or social play).
+      2. "HIDDEN_ALLERGENS": If the notes mention a food allergy (like peanuts, dairy, etc.), list 3-4 surprising or "hidden" foods that might contain that ingredient. If no allergy is mentioned, write "No specific food restrictions identified. Standard healthy daycare menu applies."
+      
+      Format your response as:
+      AGE_CARE: [content here]
+      HIDDEN_ALLERGENS: [content here]
+    `;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    const ageCare = text.match(/AGE_CARE:\s*(.*)/)?.[1] || "Standard age-appropriate care applied.";
+    const hiddenAllergens = text.match(/HIDDEN_ALLERGENS:\s*(.*)/s)?.[1] || "No specific restrictions.";
+
+    // Emit the document data via Pusher
+    pusher.trigger('fawn-live', 'lead-document', {
+      parentName,
+      childName,
+      age,
+      medicalNotes: medicalNotes || 'None',
+      ageCare: ageCare.trim(),
+      hiddenAllergens: hiddenAllergens.trim(),
+      timestamp: new Date().toISOString()
+    }).catch(err => console.error('[Pusher lead-document error]', err));
+
+  } catch (err) {
+    console.error('[Gemini Doc Gen Error]', err);
+  }
+}
+
 async function appendLeadToSheet(name, childName, age, notes = "") {
   try {
     // 1. Save to MongoDB (Permanent Brain)
@@ -565,10 +609,20 @@ wss.on('connection', (twWs) => {
                     await bookTourOnCalendar(call.args.name, call.args.date_time);
                 } else if (call.name === "GenerateDoc") {
                     emitAction("document", "Generating Intake Form", `Child: ${call.args.child_name}, Age: ${call.args.age}. Med: ${call.args.medical_notes || 'None'}`);
-                    await appendLeadToSheet(
+                    
+                    // 1. Traditional Storage (Sheets/DB)
+                    appendLeadToSheet(
                         call.args.parent_name || "New Parent", 
                         call.args.child_name, 
                         call.args.age, 
+                        call.args.medical_notes
+                    );
+
+                    // 2. AI Document Preview Generation (New)
+                    generateLeadDocumentData(
+                        call.args.parent_name || "New Parent",
+                        call.args.child_name,
+                        call.args.age,
                         call.args.medical_notes
                     );
                 } else if (call.name === "CheckRoomAvailability") {

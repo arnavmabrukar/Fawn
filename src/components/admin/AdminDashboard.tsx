@@ -7,6 +7,7 @@ import { AdminNoteComposer } from '@/components/dashboard/AdminNoteComposer';
 import { LiveAgentPanel } from '@/components/dashboard/LiveAgentPanel';
 import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsFeed';
 import { HistoryModal } from '@/components/dashboard/HistoryModal';
+import { DigitalIntakeDoc } from '@/components/admin/DigitalIntakeDoc';
 import { Trash2, Play, ExternalLink, Sparkles, Database } from 'lucide-react';
 import {
   ActionEntry,
@@ -30,6 +31,7 @@ export function AdminDashboard() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [dbLeads, setDbLeads] = useState<any[]>([]);
   const [dbCalls, setDbCalls] = useState<any[]>([]);
+  const [activeLeadDoc, setActiveLeadDoc] = useState<any>(null);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   const openHistoryModal = async () => {
@@ -74,6 +76,10 @@ export function AdminDashboard() {
       if (data.type === 'calendar' || data.type === 'document') {
         setLeads(prev => prev + 1);
       }
+    });
+
+    channel.bind('lead-document', (data: any) => {
+      setActiveLeadDoc(data);
     });
 
     channel.bind('audit-clear', () => {
@@ -158,6 +164,7 @@ export function AdminDashboard() {
     setTranscript([]);
     setActions([]);
     setFawnMessage('');
+    setActiveLeadDoc(null);
   };
 
   const startSimulation = () => {
@@ -174,6 +181,15 @@ export function AdminDashboard() {
       { t: 15000, type: 'transcript', data: { speaker: 'fawn', text: 'Thanks, Sarah! I’ve made a note about Leo’s peanut allergy. We are a peanut-free facility, so he will be perfectly safe here. Would you like to come in for a tour this Thursday at 10 AM?' } },
       { t: 19000, type: 'transcript', data: { speaker: 'caller', text: 'Thursday at 10 AM works great for me.' } },
       { t: 21000, type: 'action', data: { type: 'calendar', title: 'Tour Booked for Sarah & Leo', description: 'Thursday, March 20th @ 10:00 AM' } },
+      { t: 21500, type: 'metric', data: { type: 'lead-doc', doc: {
+          parentName: 'Sarah',
+          childName: 'Leo',
+          age: 3,
+          medicalNotes: 'Peanut Allergy',
+          ageCare: 'Focus on social interaction and cooperative play. Transitioning to structured learning activities while maintaining a nurturing environment.',
+          hiddenAllergens: 'Watch for curry sauces, mole, pesto, and some ethnic breads where peanuts might be used as a thickener or hidden ingredient.',
+          timestamp: new Date().toISOString()
+      }}},
       { t: 24000, type: 'action', data: { type: 'checkin', title: 'Leo checked in', description: 'Front desk completed the arrival handoff.', childName: 'Leo', checkedInAt: new Date(Date.now() + 24000).toISOString() } },
       { t: 22000, type: 'metric', data: { type: 'lead' } },
       { t: 23000, type: 'transcript', data: { speaker: 'fawn', text: 'Wonderful! I have booked your tour for Thursday at 10 AM. I’ll send a confirmation text shortly. Do you have any other questions?' } },
@@ -195,6 +211,9 @@ export function AdminDashboard() {
           setActions(prev => [...prev, toActionEntry(step.data as IncomingActionPayload)]);
         } else if (step.type === 'metric') {
           setLeads(prev => prev + 1);
+          if (step.data?.type === 'lead-doc') {
+            setActiveLeadDoc(step.data.doc);
+          }
         } else if (step.type === 'end') {
           setIsOnCall(false);
         }
@@ -297,6 +316,10 @@ export function AdminDashboard() {
           />
         </div>
       </div>
+
+      {activeLeadDoc && (
+        <DigitalIntakeDoc data={activeLeadDoc} />
+      )}
 
       <HistoryModal
         isOpen={isHistoryOpen}
