@@ -5,7 +5,18 @@ const Pusher = require('pusher');
 const { WaveFile } = require('wavefile');
 const { google } = require('googleapis');
 const { GoogleGenAI } = require('@google/genai');
-const { connectDB, Lead, Call, ToyFeedback, RoomRatio } = require('./db');
+const { connectDB } = require('./db');
+const {
+  createMongoOperationContext,
+} = require('./src/lib/mongo-context');
+const {
+  createLeadRecord,
+  createCallRecord,
+  completeCallRecord,
+  listRecentHistory,
+  listToyFeedback,
+  listRoomRatios,
+} = require('./src/lib/mongo-operations');
 
 
 // Initialize MongoDB
@@ -14,6 +25,8 @@ connectDB();
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const inboundCallContexts = new Map();
 
 // Allow the Next.js frontend (port 3000) to call our API (port 8080)
 app.use((req, res, next) => {
@@ -52,7 +65,60 @@ const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 // Initialize Gemini for Document Content Generation
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-async function generateLeadDocumentData(parentName, childName, age, medicalNotes) {
+function buildRequestContext(req, entryPoint, extras = {}) {
+  return createMongoOperationContext({
+    entryPoint,
+    source: 'http',
+    payload: req.body || {},
+    request: {
+      method: req.method,
+      path: req.originalUrl,
+      headers: {
+        host: req.headers.host,
+        'user-agent': req.headers['user-agent'],
+        'content-type': req.headers['content-type'],
+      },
+      query: req.query || {},
+    },
+    twilio: {
+      callSid: req.body?.CallSid,
+      from: req.body?.From,
+      to: req.body?.To,
+    },
+    ...extras,
+  });
+}
+
+function mergeContextValues(baseValue, nextValue) {
+  if (baseValue == null) {
+    return nextValue;
+  }
+
+  if (nextValue == null) {
+    return baseValue;
+  }
+
+  if (Array.isArray(baseValue) || Array.isArray(nextValue)) {
+    return nextValue;
+  }
+
+  if (typeof baseValue !== 'object' || typeof nextValue !== 'object') {
+    return nextValue;
+  }
+
+  const merged = { ...baseValue };
+  Object.entries(nextValue).forEach(([key, value]) => {
+    merged[key] = key in merged ? mergeContextValues(merged[key], value) : value;
+  });
+  return merged;
+}
+
+function mergeOperationContext(...parts) {
+  const merged = parts.filter(Boolean).reduce((acc, part) => mergeContextValues(acc, part), {});
+  return createMongoOperationContext(merged);
+}
+
+async function generateLeadDocumentData(parentName, childName, age, medicalNotes, operationContext = {}) {
   try {
     const prompt = `
       You are a daycare safety and care expert. Generate personalized content for a new student intake document.
@@ -87,7 +153,8 @@ async function generateLeadDocumentData(parentName, childName, age, medicalNotes
       medicalNotes: medicalNotes || 'None',
       ageCare: ageCare.trim(),
       hiddenAllergens: hiddenAllergens.trim(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      operationContext,
     }).catch(err => console.error('[Pusher lead-document error]', err));
 
   } catch (err) {
@@ -95,16 +162,15 @@ async function generateLeadDocumentData(parentName, childName, age, medicalNotes
   }
 }
 
-async function appendLeadToSheet(name, childName, age, notes = "") {
+async function appendLeadToSheet(name, childName, age, notes = "", operationContext = {}) {
   try {
     // 1. Save to MongoDB (Permanent Brain)
-    const newLead = new Lead({
+    await createLeadRecord({
       parentName: name,
       childName,
-      childAge: parseInt(age) || 0,
-      medicalNotes: notes
-    });
-    await newLead.save();
+      age,
+      medicalNotes: notes,
+    }, operationContext);
     console.log(`[MongoDB] Lead saved for ${childName}`);
 
     // 2. Append to Google Sheets (Shared View)
@@ -222,6 +288,13 @@ function emitCallEnd() {
 // REST route for incoming Twilio Voice Calls
 app.post('/api/voice/inbound', (req, res) => {
   const host = req.headers.host;
+  const requestContext = buildRequestContext(req, 'voice.inbound');
+  const callSid = requestContext.callSid;
+
+  if (callSid) {
+    inboundCallContexts.set(callSid, requestContext);
+  }
+
   console.log(`[Twilio Inbound webhook] Host: ${host}`);
   const twiml = `
 <Response>
@@ -247,8 +320,9 @@ app.post('/api/feed/action', (req, res) => {
 
 app.get('/api/history', async (req, res) => {
   try {
-    const historicalLeads = await Lead.find().sort({ createdAt: -1 }).limit(10);
-    const historicalCalls = await Call.find().sort({ startTime: -1 }).limit(10);
+    const { historicalLeads, historicalCalls } = await listRecentHistory(
+      buildRequestContext(req, 'history.list')
+    );
     
     // Transform into frontend format
     const leads = historicalLeads.map(l => ({
@@ -276,7 +350,7 @@ app.get('/api/history', async (req, res) => {
 
 app.get('/api/toys', async (req, res) => {
   try {
-    const toys = await ToyFeedback.find().sort({ weekOf: -1 }).limit(20);
+    const toys = await listToyFeedback(buildRequestContext(req, 'toys.list'));
     const formatted = toys.map(t => ({
       id: t._id,
       toy: t.toy,
@@ -304,7 +378,7 @@ app.get('/api/swarm', async (req, res) => {
   };
 
   try {
-    const records = await ToyFeedback.find().limit(20);
+    const records = await listToyFeedback(buildRequestContext(req, 'swarm.list'));
     const dataStr = JSON.stringify(records.map(r => ({ toy: r.toy, rating: r.rating, quote: r.quote, tags: r.tags })));
 
     let ai;
@@ -413,7 +487,13 @@ const wss = new WebSocket.Server({ server, path: '/api/media' });
 wss.on('connection', (twWs) => {
   console.log('[Twilio] Connected');
   let streamSid = null;
+  let callSid = null;
   let isSetupComplete = false;
+  let callContext = createMongoOperationContext({
+    entryPoint: 'voice.websocket',
+    source: 'websocket',
+    payload: {},
+  });
   
   if (!process.env.GEMINI_API_KEY) {
       console.error("[Config Error] GEMINI_API_KEY is missing in .env");
@@ -605,6 +685,14 @@ wss.on('connection', (twWs) => {
                 console.log(`[Gemini ToolCall] ${call.name}`, call.args);
                 
                 let result = { result: "success" };
+                const toolContext = mergeOperationContext(callContext, {
+                    source: 'gemini-tool',
+                    toolCall: {
+                        id: call.id,
+                        name: call.name,
+                        args: call.args,
+                    },
+                });
 
                 if (call.name === "BookCalendar") {
                     emitAction("calendar", "Tour Booked", `Parent: ${call.args.name}, Time: ${call.args.date_time}`);
@@ -617,7 +705,8 @@ wss.on('connection', (twWs) => {
                         call.args.parent_name || "New Parent", 
                         call.args.child_name, 
                         call.args.age, 
-                        call.args.medical_notes
+                        call.args.medical_notes,
+                        toolContext
                     );
 
                     // 2. AI Document Preview Generation (New)
@@ -625,14 +714,15 @@ wss.on('connection', (twWs) => {
                         call.args.parent_name || "New Parent",
                         call.args.child_name,
                         call.args.age,
-                        call.args.medical_notes
+                        call.args.medical_notes,
+                        toolContext
                     );
                 } else if (call.name === "CheckRoomAvailability") {
                     const safeName = call.args.room_name || "Unknown";
                     emitAction("calendar", "Checking Room Ratios", `Querying MongoDB for ${safeName} room.`);
                     
                     try {
-                        const allRatios = await RoomRatio.find({});
+                        const allRatios = await listRoomRatios(toolContext);
                         const ratioData = allRatios.find(r => 
                             r.roomName.toLowerCase().includes(safeName.toLowerCase().replace(/s$/i, '')) ||
                             safeName.toLowerCase().includes(r.roomName.toLowerCase().replace(/s$/i, ''))
@@ -692,12 +782,29 @@ twWs.on('message', (message) => {
     const msg = JSON.parse(message);
     if (msg.event === 'start') {
       streamSid = msg.start.streamSid;
+      callSid = msg.start.callSid || msg.start.customParameters?.callSid || null;
+      const inboundContext = callSid ? inboundCallContexts.get(callSid) : null;
+      callContext = mergeOperationContext(inboundContext, {
+        entryPoint: 'voice.stream.start',
+        source: 'twilio-media-stream',
+        callSid,
+        streamSid,
+        twilio: {
+          callSid,
+          streamSid,
+          tracks: msg.start.tracks,
+          customParameters: msg.start.customParameters,
+        },
+        payload: msg.start,
+      });
       console.log(`[Twilio] Stream Started: ${streamSid}`);
       emitCallStart();
       
       // Log Call to MongoDB
-      const newCall = new Call({ streamSid, startTime: new Date() });
-      newCall.save().catch(err => console.error('[MongoDB] Call Start Log Error:', err.message));
+      createCallRecord({
+        streamSid,
+        startTime: new Date(),
+      }, callContext).catch(err => console.error('[MongoDB] Call Start Log Error:', err.message));
     } else if (msg.event === 'media') {
           // Decode 8kHz mu-law coming from Twilio -> 16kHz PCM for Gemini
           if (gemWs.readyState === WebSocket.OPEN && isSetupComplete) {
@@ -723,6 +830,10 @@ twWs.on('message', (message) => {
           }
     } else if (msg.event === 'stop') {
       console.log('[Twilio] Stream Stopped');
+      callContext = mergeOperationContext(callContext, {
+        entryPoint: 'voice.stream.stop',
+        payload: msg,
+      });
       gemWs.close();
     }
   });
@@ -735,16 +846,25 @@ twWs.on('message', (message) => {
     if (streamSid) {
       try {
         const endTime = new Date();
-        const callRecord = await Call.findOne({ streamSid }).sort({ startTime: -1 });
+        const callRecord = await completeCallRecord({
+          streamSid,
+          endTime,
+        }, mergeOperationContext(callContext, {
+          entryPoint: 'voice.websocket.close',
+          source: 'websocket',
+          callSid,
+          streamSid,
+        }));
         if (callRecord) {
-          callRecord.endTime = endTime;
-          callRecord.duration = Math.floor((endTime - callRecord.startTime) / 1000);
-          await callRecord.save();
           console.log(`[MongoDB] Call record updated. Duration: ${callRecord.duration}s`);
         }
       } catch (err) {
         console.error('[MongoDB] Call End Update Error:', err.message);
       }
+    }
+
+    if (callSid) {
+      inboundCallContexts.delete(callSid);
     }
 
     if (gemWs.readyState === WebSocket.OPEN) gemWs.close();

@@ -143,3 +143,21 @@ fawnai/
 - **Call** — Voice call metadata and transcripts
 - **ToyFeedback** — Teacher ratings and feedback
 - **RoomRatio** — Classroom capacity and staffing ratios
+
+## MongoDB Data Flow
+
+MongoDB access now runs through `src/lib/mongo-operations.js`, with request metadata normalized by `src/lib/mongo-context.js`.
+
+- Every MongoDB operation receives an explicit `operationContext`.
+- New documents store that context in `operationContext.origin`, `operationContext.current`, and `operationContext.events`.
+- Follow-up operations such as call completion merge new metadata into `operationContext.current` while preserving the original inbound call payload in `operationContext.origin`.
+- Read queries also receive the same context through Mongoose query options, so request-scoped metadata is available consistently across create, read, and update paths.
+
+For the voice flow:
+
+1. `POST /api/voice/inbound` captures the original Twilio webhook payload and stores a request context keyed by `CallSid`.
+2. The Twilio Media Stream start event merges that inbound context with the stream metadata.
+3. Gemini tool calls reuse the merged context when they create leads or query room ratios.
+4. Call completion appends a final MongoDB context event without losing the original call data.
+
+Run `npm test` to verify context propagation behavior.
