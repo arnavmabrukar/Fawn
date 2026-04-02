@@ -9,6 +9,7 @@ import { AutonomousActionsFeed } from '@/components/dashboard/AutonomousActionsF
 import { HistoryModal } from '@/components/dashboard/HistoryModal';
 import { IntakeSummaryModal } from '@/components/dashboard/IntakeSummaryModal';
 import { Trash2, Play, ExternalLink, Sparkles, Database } from 'lucide-react';
+import { apiUrl } from '@/lib/api-base';
 import {
   ActionEntry,
   AUDIT_LOG_STORAGE_KEY,
@@ -20,6 +21,41 @@ import {
   toActionEntry,
 } from '@/lib/live-feed';
 
+type HistoryLeadRecord = {
+  id: string;
+  childName: string;
+  parentName: string;
+  age: string | number;
+  timestamp: string;
+};
+
+type HistoryCallRecord = {
+  id: string;
+  duration: string | number;
+  timestamp: string;
+};
+
+type IntakeSummaryData = {
+  parentName: string;
+  childName: string;
+  age: string | number;
+  medicalNotes: string;
+  ageCare: string;
+  hiddenAllergens: string;
+  timestamp: string;
+};
+
+type HistoryResponse = {
+  leads?: HistoryLeadRecord[];
+  calls?: HistoryCallRecord[];
+};
+
+type SimulationStep =
+  | { t: number; type: 'transcript'; data: { speaker: 'fawn' | 'caller'; text: string } }
+  | { t: number; type: 'action'; data: IncomingActionPayload }
+  | { t: number; type: 'metric'; data: { type: 'lead' } | { type: 'lead-doc'; doc: IntakeSummaryData } }
+  | { t: number; type: 'end' };
+
 export function AdminDashboard() {
   const sourceIdRef = useRef(`admin-${crypto.randomUUID()}`);
   const [isOnCall, setIsOnCall] = useState(false);
@@ -29,17 +65,17 @@ export function AdminDashboard() {
   const [leads, setLeads] = useState(12);
   const [calls, setCalls] = useState(45);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [dbLeads, setDbLeads] = useState<any[]>([]);
-  const [dbCalls, setDbCalls] = useState<any[]>([]);
-  const [activeLeadDoc, setActiveLeadDoc] = useState<any>(null);
+  const [dbLeads, setDbLeads] = useState<HistoryLeadRecord[]>([]);
+  const [dbCalls, setDbCalls] = useState<HistoryCallRecord[]>([]);
+  const [activeLeadDoc, setActiveLeadDoc] = useState<IntakeSummaryData | null>(null);
   const [isIntakeSummaryOpen, setIsIntakeSummaryOpen] = useState(false);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
   const openHistoryModal = async () => {
     try {
-      const res = await fetch('http://localhost:8080/api/history');
+      const res = await fetch(apiUrl('/api/history'));
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as HistoryResponse;
         setDbLeads(data.leads || []);
         setDbCalls(data.calls || []);
       }
@@ -79,7 +115,7 @@ export function AdminDashboard() {
       }
     });
 
-    channel.bind('lead-document', (data: any) => {
+    channel.bind('lead-document', (data: IntakeSummaryData) => {
       setActiveLeadDoc(data);
     });
 
@@ -174,7 +210,7 @@ export function AdminDashboard() {
     setIsOnCall(true);
     setCalls(prev => prev + 1);
 
-    const sequence = [
+    const sequence: SimulationStep[] = [
       { t: 1000, type: 'transcript', data: { speaker: 'fawn', text: 'Hello! Thank you for calling Sunshine Daycare. I am Fawn, the AI receptionist. How can I help you today?' } },
       { t: 4000, type: 'transcript', data: { speaker: 'caller', text: 'Hi, I’m looking to enroll my 3-year-old son, and I was wondering if I could book a tour?' } },
       { t: 7000, type: 'transcript', data: { speaker: 'fawn', text: 'I can certainly help with that! We have availability for 3-year-olds. Could I get your name and your son’s name first?' } },
@@ -201,19 +237,17 @@ export function AdminDashboard() {
     ];
 
     sequence.forEach(step => {
-      const timeout = setTimeout(() => {
+          const timeout = setTimeout(() => {
         if (step.type === 'transcript') {
-          if (!step.data) return;
           if (step.data.speaker === 'fawn') {
-            setFawnMessage(step.data.text as string);
+            setFawnMessage(step.data.text);
           }
-          setTranscript(prev => [...prev, { id: crypto.randomUUID(), speaker: step.data.speaker as 'fawn' | 'caller', text: step.data.text as string }]);
+          setTranscript(prev => [...prev, { id: crypto.randomUUID(), speaker: step.data.speaker, text: step.data.text }]);
         } else if (step.type === 'action') {
-          if (!step.data) return;
-          setActions(prev => [...prev, toActionEntry(step.data as IncomingActionPayload)]);
+          setActions(prev => [...prev, toActionEntry(step.data)]);
         } else if (step.type === 'metric') {
           setLeads(prev => prev + 1);
-          if (step.data?.type === 'lead-doc') {
+          if (step.data.type === 'lead-doc') {
             setActiveLeadDoc(step.data.doc);
           }
         } else if (step.type === 'end') {

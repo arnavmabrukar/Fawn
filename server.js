@@ -50,8 +50,7 @@ const sheets = google.sheets({ version: 'v4', auth: googleAuth });
 const calendar = google.calendar({ version: 'v3', auth: googleAuth });
 
 // Initialize Gemini for Document Content Generation
-const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function generateLeadDocumentData(parentName, childName, age, medicalNotes) {
   try {
@@ -71,8 +70,11 @@ async function generateLeadDocumentData(parentName, childName, age, medicalNotes
       HIDDEN_ALLERGENS: [content here]
     `;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const result = await genAI.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: prompt,
+    });
+    const text = result.text || "";
     
     const ageCare = text.match(/AGE_CARE:\s*(.*)/)?.[1] || "Standard age-appropriate care applied.";
     const hiddenAllergens = text.match(/HIDDEN_ALLERGENS:\s*(.*)/s)?.[1] || "No specific restrictions.";

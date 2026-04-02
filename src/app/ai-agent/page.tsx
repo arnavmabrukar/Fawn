@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Sparkles, Star, User, Brain, ShieldCheck, TrendingUp, DollarSign, CheckCircle2, Clock, ArrowLeft } from "lucide-react";
+import { apiUrl } from "@/lib/api-base";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -175,7 +176,7 @@ export default function AIAgentPage() {
   const [doneIds, setDoneIds] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/toys')
+    fetch(apiUrl('/api/toys'))
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) setToyRecords(data);
@@ -192,7 +193,7 @@ export default function AIAgentPage() {
     setActiveIds([]);
     setDoneIds([]);
 
-    const evtSource = new EventSource('http://localhost:8080/api/swarm');
+    const evtSource = new EventSource(apiUrl('/api/swarm'));
 
     evtSource.addEventListener('status', (e) => {
       console.log('Swarm Status:', JSON.parse(e.data).message);
