@@ -186,19 +186,27 @@ export default function AIAgentPage() {
   const [doneIds, setDoneIds] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch(apiUrl('/api/toys'))
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+    fetch(apiUrl('/api/toys'), { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
+        clearTimeout(timeoutId);
         if (Array.isArray(data) && data.length > 0) {
           setToyRecords(data);
         } else {
           setToyRecords(MOCK_TOYS);
         }
       })
-      .catch(err => {
-        console.error("Failed to fetch toys:", err);
+      .catch(() => {
         setToyRecords(MOCK_TOYS);
       });
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, []);
 
   const runSwarm = () => {

@@ -73,23 +73,24 @@ export function AdminDashboard() {
 
   const openHistoryModal = async () => {
     try {
-      const res = await fetch(apiUrl('/api/history'));
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const res = await fetch(apiUrl('/api/history'), { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const data = await res.json() as HistoryResponse;
-        
-        // Merge real backend data with local demo data
         const localDemoleads = JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]');
         const localDemocalls = JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]');
-        
         setDbLeads([...localDemoleads, ...(data.leads || [])]);
         setDbCalls([...localDemocalls, ...(data.calls || [])]);
       } else {
         setDbLeads(JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]'));
         setDbCalls(JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]'));
       }
-    } catch (err) {
-      console.error("Failed to fetch history:", err);
-      // Fallback to demo data if the API is offline
+    } catch {
+      // Backend offline or timed out — fall back to localStorage demo data instantly
       setDbLeads(JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]'));
       setDbCalls(JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]'));
     }
