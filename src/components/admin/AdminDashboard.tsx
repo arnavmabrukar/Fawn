@@ -98,6 +98,12 @@ export function AdminDashboard() {
     setActions(readStoredAuditLog().map(toActionEntry));
   }, []);
 
+  // Clear demo data on every page load/refresh so it starts fresh
+  useEffect(() => {
+    localStorage.removeItem('fawn_demo_leads');
+    localStorage.removeItem('fawn_demo_calls');
+  }, []);
+
   useEffect(() => {
     const pusherAppKey = process.env.NEXT_PUBLIC_PUSHER_KEY || 'key';
     const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'us2';
@@ -212,6 +218,11 @@ export function AdminDashboard() {
     setFawnMessage('');
     setActiveLeadDoc(null);
     setIsIntakeSummaryOpen(false);
+    // Also clear demo database entries
+    localStorage.removeItem('fawn_demo_leads');
+    localStorage.removeItem('fawn_demo_calls');
+    setDbLeads([]);
+    setDbCalls([]);
   };
 
   const startSimulation = () => {
