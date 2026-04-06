@@ -71,30 +71,27 @@ export function AdminDashboard() {
   const [isIntakeSummaryOpen, setIsIntakeSummaryOpen] = useState(false);
   const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
 
-  const openHistoryModal = async () => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-      const res = await fetch(apiUrl('/api/history'), { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json() as HistoryResponse;
-        const localDemoleads = JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]');
-        const localDemocalls = JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]');
-        setDbLeads([...localDemoleads, ...(data.leads || [])]);
-        setDbCalls([...localDemocalls, ...(data.calls || [])]);
-      } else {
-        setDbLeads(JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]'));
-        setDbCalls(JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]'));
-      }
-    } catch {
-      // Backend offline or timed out — fall back to localStorage demo data instantly
-      setDbLeads(JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]'));
-      setDbCalls(JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]'));
-    }
+  const openHistoryModal = () => {
+    // Open instantly with whatever is in localStorage
+    const localDemoleads = JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]');
+    const localDemocalls = JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]');
+    setDbLeads(localDemoleads);
+    setDbCalls(localDemocalls);
     setIsHistoryOpen(true);
+
+    // Silently try the real backend in the background — update if it responds
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 2000);
+
+    fetch(apiUrl('/api/history'), { signal: controller.signal })
+      .then(res => res.ok ? res.json() : null)
+      .then((data: HistoryResponse | null) => {
+        if (data) {
+          setDbLeads([...localDemoleads, ...(data.leads || [])]);
+          setDbCalls([...localDemocalls, ...(data.calls || [])]);
+        }
+      })
+      .catch(() => {/* backend offline, already showing demo data */});
   };
 
   useEffect(() => {
