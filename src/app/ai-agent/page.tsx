@@ -35,7 +35,17 @@ interface SwarmResult {
   score: number;
 }
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
+const MOCK_TOYS: ToyRecord[] = [
+  {
+    id: "demo1", toy: "Magna-Tiles 100-Piece Set", emoji: "🧲", teacher: "Ms. Sarah", rating: 5, quote: "Kids were completely absorbed for 45 minutes building a castle. Incredible for spatial awareness.", date: "Oct 24", tags: ["STEM", "Cooperative Play"]
+  },
+  {
+    id: "demo2", toy: "Kinetic Sand Play Set", emoji: "🏖️", teacher: "Mr. David", rating: 4, quote: "Great sensory experience, very calming for the toddlers. A bit messy to clean up though.", date: "Oct 25", tags: ["Sensory", "Fine Motor"]
+  },
+  {
+    id: "demo3", toy: "Wooden Train Set", emoji: "🚂", teacher: "Ms. Jessica", rating: 3, quote: "Classic toy but the pieces keep getting lost under the couches.", date: "Oct 21", tags: ["Classic", "Imaginative"]
+  }
+];
 
 const INITIAL_AGENTS: Agent[] = [
   {
@@ -179,9 +189,16 @@ export default function AIAgentPage() {
     fetch(apiUrl('/api/toys'))
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) setToyRecords(data);
+        if (Array.isArray(data) && data.length > 0) {
+          setToyRecords(data);
+        } else {
+          setToyRecords(MOCK_TOYS);
+        }
       })
-      .catch(err => console.error("Failed to fetch toys:", err));
+      .catch(err => {
+        console.error("Failed to fetch toys:", err);
+        setToyRecords(MOCK_TOYS);
+      });
   }, []);
 
   const runSwarm = () => {
@@ -238,6 +255,80 @@ export default function AIAgentPage() {
     });
   };
 
+  const runDemoSwarm = () => {
+    if (swarmState === "running") return;
+
+    setSwarmState("running");
+    setSwarmResults([]);
+    setAgents(INITIAL_AGENTS.map(a => ({ ...a, messages: [] })));
+    
+    // Activate all 4 parallel sub-agents immediately
+    setActiveIds(["safety", "engagement", "budget", "dev"]);
+    setDoneIds([]);
+
+    const pushMessage = (agentId: string, text: string, delay: number) => {
+      setTimeout(() => {
+        setAgents(prev => prev.map(a => 
+          a.id === agentId ? { ...a, messages: [...a.messages, text] } : a
+        ));
+      }, delay);
+    };
+
+    const finishAgent = (agentId: string, delay: number) => {
+      setTimeout(() => {
+        setActiveIds(prev => prev.filter(id => id !== agentId));
+        setDoneIds(prev => [...prev, agentId]);
+      }, delay);
+    };
+
+    // Agent SHIELD (Safety)
+    pushMessage("safety", "Analyzing components for choking hazards < 1.25 inches...", 1000);
+    pushMessage("safety", "Cross-referencing CPSC recall databases...", 2500);
+    pushMessage("safety", "Verified materials: Non-toxic ABS plastics and food-grade silicone.", 4000);
+    pushMessage("safety", "Safety checks passed. No high-risk items identified in current selection.", 5500);
+    finishAgent("safety", 6000);
+
+    // Agent PULSE (Engagement)
+    pushMessage("engagement", "Parsing teacher sentiment analysis from feedback...", 1200);
+    pushMessage("engagement", "Magna-tiles showing 94% sustained focus duration.", 2800);
+    pushMessage("engagement", "Kinetic sand engagement high, but replay value slightly drops on day 3.", 4200);
+    pushMessage("engagement", "Top engagement score assigned to magnetic building sets.", 5200);
+    finishAgent("engagement", 5800);
+
+    // Agent LEDGER (Budget)
+    pushMessage("budget", "Calculating current inventory depreciation...", 800);
+    pushMessage("budget", "Weekly budget cap: $200.00.", 2000);
+    pushMessage("budget", "Projected cost of new Magna-tiles expansion: $119.99.", 3500);
+    pushMessage("budget", "Budget optimized. $80.01 remains for sensory materials.", 5000);
+    finishAgent("budget", 5500);
+
+    // Agent GROW (Dev)
+    pushMessage("dev", "Mapping toy properties to Piaget's stages of cognitive development...", 1500);
+    pushMessage("dev", "Sensory sand supports tactile feedback required in pre-operational stage.", 3000);
+    pushMessage("dev", "Train sets lacking open-ended versatility compared to blocks.", 4500);
+    pushMessage("dev", "Alignment confirmed for spatial reasoning and fine motor milestones.", 6000);
+    finishAgent("dev", 6500);
+
+    // Consensus Agent (Starts after others finish)
+    setTimeout(() => {
+      setActiveIds(["consensus"]);
+      pushMessage("consensus", "Aggregating signals from 4 parallel agents...", 500);
+      pushMessage("consensus", "Safety weight: 40% | Engagement: 30% | Dev: 20% | Budget: 10%", 2000);
+      pushMessage("consensus", "🏆 Consensus reached. Final toy lineup confirmed.", 3500);
+      
+      setTimeout(() => {
+        setActiveIds([]);
+        setDoneIds(prev => [...prev, "consensus"]);
+        setSwarmResults([
+          { toy: "Magna-Tiles Expansion", emoji: "🧲", score: 98, reason: "Perfect safety record, unmatched cooperative engagement, and fits within the $200 budget." },
+          { toy: "Kinetic Sand Bulk Pack", emoji: "🏖️", score: 85, reason: "Excellent sensory & fine motor development. Replaced older high-mess options." },
+          { toy: "Soft Foam Blocks", emoji: "🧱", score: 82, reason: "Great for infants and early toddlers. Zero choking hazard and highly durable." }
+        ]);
+        setSwarmState("done");
+      }, 5000);
+    }, 7000);
+  };
+
   const resetSwarm = () => {
     setSwarmState("idle");
     setAgents(INITIAL_AGENTS.map(a => ({ ...a, messages: [] })));
@@ -281,6 +372,18 @@ export default function AIAgentPage() {
                 </button>
               )}
               <button
+                onClick={runDemoSwarm}
+                disabled={swarmState === "running" || toyRecords.length === 0}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
+                  swarmState === "running" || toyRecords.length === 0
+                    ? "bg-fuchsia-300 text-white cursor-not-allowed"
+                    : "bg-fuchsia-600 text-white hover:bg-fuchsia-700 hover:shadow-fuchsia-200 hover:shadow-lg"
+                }`}
+              >
+                <Sparkles size={16} />
+                 {toyRecords.length === 0 ? "Loading DB..." : swarmState === "running" ? "Agents Analyzing..." : "Simulate Swarm (Demo)"}
+              </button>
+              <button
                 onClick={runSwarm}
                 disabled={swarmState === "running" || toyRecords.length === 0}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all shadow-md ${
@@ -290,7 +393,7 @@ export default function AIAgentPage() {
                 }`}
               >
                 <Sparkles size={16} />
-                 {toyRecords.length === 0 ? "Loading DB..." : swarmState === "running" ? "Agents Analyzing..." : "Run Gemini Swarm"}
+                 {toyRecords.length === 0 ? "Loading DB..." : swarmState === "running" ? "Agents Analyzing..." : "Run Real Swarm"}
               </button>
             </div>
           </div>

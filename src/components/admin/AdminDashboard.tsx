@@ -76,11 +76,22 @@ export function AdminDashboard() {
       const res = await fetch(apiUrl('/api/history'));
       if (res.ok) {
         const data = await res.json() as HistoryResponse;
-        setDbLeads(data.leads || []);
-        setDbCalls(data.calls || []);
+        
+        // Merge real backend data with local demo data
+        const localDemoleads = JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]');
+        const localDemocalls = JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]');
+        
+        setDbLeads([...localDemoleads, ...(data.leads || [])]);
+        setDbCalls([...localDemocalls, ...(data.calls || [])]);
+      } else {
+        setDbLeads(JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]'));
+        setDbCalls(JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]'));
       }
     } catch (err) {
       console.error("Failed to fetch history:", err);
+      // Fallback to demo data if the API is offline
+      setDbLeads(JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]'));
+      setDbCalls(JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]'));
     }
     setIsHistoryOpen(true);
   };
@@ -252,6 +263,26 @@ export function AdminDashboard() {
           }
         } else if (step.type === 'end') {
           setIsOnCall(false);
+          
+          // Inject fake data into local storage for the demo portfolio
+          const demoLead: HistoryLeadRecord = {
+            id: crypto.randomUUID(),
+            childName: 'Leo (Demo Simulation)',
+            parentName: 'Sarah',
+            age: 3,
+            timestamp: new Date().toISOString()
+          };
+          const demoCall: HistoryCallRecord = {
+            id: crypto.randomUUID(),
+            duration: 30, // Simulated exact length
+            timestamp: new Date().toISOString()
+          };
+          
+          const existingLeads = JSON.parse(localStorage.getItem('fawn_demo_leads') || '[]');
+          const existingCalls = JSON.parse(localStorage.getItem('fawn_demo_calls') || '[]');
+          
+          localStorage.setItem('fawn_demo_leads', JSON.stringify([demoLead, ...existingLeads]));
+          localStorage.setItem('fawn_demo_calls', JSON.stringify([demoCall, ...existingCalls]));
         }
       }, step.t);
       timeoutsRef.current.push(timeout);
