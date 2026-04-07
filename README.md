@@ -1,6 +1,9 @@
 # 🦌 Fawn AI — Daycare Receptionist Agent
 
-<img width="736" height="340" alt="image" src="https://github.com/user-attachments/assets/cddc9ae0-751b-4a38-8706-126f241f00ae" />
+<img width="241" height="72" alt="image" src="https://github.com/user-attachments/assets/caee2319-47f2-4a0b-a484-cfb672d9753e" />
+
+[PLACE VIDEO HERE]
+
 
 
 Fawn is an AI-powered phone receptionist for daycare centers. She answers calls autonomously via Twilio, speaks with parents using Google's Gemini Native Audio, books tours, and generates intake forms — all while syncing live to a Director's Dashboard. Features include real-time parent check-ins, autonomous action feeds, and integrated AI agent workflows.
