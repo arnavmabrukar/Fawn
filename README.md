@@ -1,5 +1,7 @@
 # 🦌 Fawn AI — Daycare Receptionist Agent
 
+Watch the demo!
+
 [![Fawn AI Demo](https://github.com/user-attachments/assets/67e989e0-b890-474e-a148-db7ec1bf0f9c)](https://youtu.be/KsoXxblur1Y)
 
 
